@@ -1,0 +1,31 @@
+server:
+  port: 8088
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/books}
+    username: ${DB_USER:books}
+    password: ${DB_PASS:books}
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+bookservice:
+  baseUrl: ${BOOKSERVICE_BASE_URL:http://localhost:8080}
+  # optional: if you protect internal endpoints
+  authToken: ${BOOKSERVICE_TOKEN:}
+
+worker:
+  enabled: true
+  pollDelayMs: 2000
+  batchSize: 25
+  maxAttempts: 8
+
+purchase:
+  provider: eurobuch
+  eurobuchBaseUrl: "https://www.eurobuch.de/search_results.php?doAll=1"

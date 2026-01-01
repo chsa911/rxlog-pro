@@ -36,17 +36,34 @@ services:
   bookservice-java-spring:
     build:
       context: ./services/bookservice-java-spring
+    ports:
+      - "8086:8086"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/rxlog
       - SPRING_DATASOURCE_USERNAME=rxlog
       - SPRING_DATASOURCE_PASSWORD=rxlog
       - SERVER_PORT=8086
       - barcode.service.base=http://barcodes-go:8082
-      # make sure Flyway is on (it usually is by default, but this is explicit)
       - SPRING_FLYWAY_ENABLED=true
     depends_on:
       postgres:
         condition: service_healthy
+
+  enrichment-java-spring:
+    build:
+      context: ./services/enrichment-java-spring
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/rxlog
+      - SPRING_DATASOURCE_USERNAME=rxlog
+      - SPRING_DATASOURCE_PASSWORD=rxlog
+      - SPRING_FLYWAY_ENABLED=false
+      # robust: keine Env-Name-Mappings raten, sondern exakt setzen:
+      - SPRING_APPLICATION_JSON={"spring":{"flyway":{"enabled":false}},"bookservice":{"baseUrl":"http://bookservice-java-spring:8086"},"worker":{"enabled":true,"batchSize":100,"pollDelayMs":200}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bookservice-java-spring:
+        condition: service_started
 
   barcodes-go:
     build:

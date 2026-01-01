@@ -1,0 +1,75 @@
+<div class="page">
+  <h2>Barcode search</h2>
+
+  <div class="row">
+    <input
+      type="text"
+      [(ngModel)]="barcode"
+      placeholder="Enter barcode (e.g. os001, li010)"
+      (keyup.enter)="search()"
+    />
+    <button (click)="search()" [disabled]="loading || !barcode.trim()">Search</button>
+  </div>
+
+  <p class="hint">
+    Active results: <code>/api/register/books</code> · History: <code>/api/barcodes/usage/details</code>
+  </p>
+
+  <div *ngIf="loading" class="info">Loading…</div>
+  <div *ngIf="error" class="error">Error: {{ error }}</div>
+
+  <!-- ACTIVE -->
+  <section>
+    <h3>Active matches</h3>
+
+    <div *ngIf="active.length === 0" class="empty">None</div>
+
+    <div class="card" *ngFor="let b of active">
+      <div class="title">
+        <span class="id">{{ b.id }}</span>
+        <span class="badge" *ngIf="b.topBook">topBook</span>
+      </div>
+
+      <div class="meta">{{ bookTitleLine(b) }}</div>
+
+      <div class="meta" *ngIf="(b.barcodes?.length ?? 0) > 0">
+        barcodes: {{ (b.barcodes ?? []).join(', ') }}
+      </div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section>
+    <h3>History matches</h3>
+
+    <div *ngIf="!history || (history.usages.length === 0)" class="empty">None</div>
+
+    <ng-container *ngIf="history">
+      <div
+        class="card historical"
+        *ngFor="let u of history.usages"
+        [class.hidden]="!isHistoricalOnly(u.bookId)"
+      >
+        <div class="title">
+          <span class="id">{{ u.bookId }}</span>
+          <span class="badge muted">historical</span>
+        </div>
+
+        <div class="meta">
+          used:
+          <b>{{ u.usedFrom | date:'yyyy-MM-dd HH:mm' }}</b>
+          →
+          <b *ngIf="u.usedTo; else activeNow">{{ u.usedTo | date:'yyyy-MM-dd HH:mm' }}</b>
+          <ng-template #activeNow>active</ng-template>
+
+          <span *ngIf="u.endReason"> · reason: {{ u.endReason }}</span>
+        </div>
+
+        <div class="meta" *ngIf="u.book">
+          {{ u.book.author }} · {{ u.book.publisher }} · {{ u.book.pages }} pages · {{ u.book.readingStatus }}
+          <span class="badge" *ngIf="u.book.topBook">topBook</span>
+        </div>
+      </div>
+    </ng-container>
+  </section>
+</div>

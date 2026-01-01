@@ -1,0 +1,28 @@
+.page { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+.row { display: flex; gap: 8px; align-items: center; }
+input { flex: 1; padding: 10px; }
+button { padding: 10px 14px; }
+.hint { color: #666; }
+.info { margin-top: 12px; }
+.error { margin-top: 12px; color: #b00020; }
+
+.card {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 12px;
+  margin: 10px 0;
+}
+.title { display: flex; gap: 8px; align-items: center; }
+.id { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono"; font-size: 12px; }
+.meta { color: #444; margin-top: 6px; }
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #aaa;
+}
+.badge.muted { border-color: #bbb; color: #666; }
+
+.historical { opacity: 0.45; } // ausgegraut
+.hidden { display: none; }
+.empty { color: #777; }

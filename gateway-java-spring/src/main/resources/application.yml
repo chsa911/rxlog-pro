@@ -8,11 +8,15 @@ spring:
     gateway:
       routes:
         - id: register
-          uri: ${REGISTER_URL:http://localhost:8086}   # <- register service
+          uri: ${REGISTER_URL:http://localhost:8086}
           predicates:
             - Path=/api/register/**
+        - id: mobile
+          uri: ${REGISTER_URL:http://localhost:8086}
+          predicates:
+            - Path=/api/mobile/**
         - id: barcodes
-          uri: ${BARCODES_URL:http://localhost:8087}   # <- barcodes service (adjust if different)
+          uri: ${BARCODES_URL:http://localhost:8087}
           predicates:
             - Path=/api/barcodes/**
 
