@@ -1,20 +1,4 @@
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: rxlog
-      POSTGRES_USER: rxlog
-      POSTGRES_PASSWORD: rxlog
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rxlog -d rxlog"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   redis:
     image: redis:7
     ports:
@@ -29,6 +13,8 @@ services:
       - SERVER_PORT=8080
       - REGISTER_URL=http://bookservice-java-spring:8086
       - BARCODES_URL=http://barcodes-go:8082
+      - JAVA_TOOL_OPTIONS=-Dserver.ssl.enabled=false
+      - SPRING_APPLICATION_JSON={"server":{"ssl":{"enabled":false}}}
     depends_on:
       - bookservice-java-spring
       - barcodes-go
@@ -39,48 +25,39 @@ services:
     ports:
       - "8086:8086"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/rxlog
-      - SPRING_DATASOURCE_USERNAME=rxlog
-      - SPRING_DATASOURCE_PASSWORD=rxlog
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${NEON_HOST}:5432/${NEON_DB}?sslmode=require
+      - SPRING_DATASOURCE_USERNAME=${NEON_USER}
+      - SPRING_DATASOURCE_PASSWORD=${NEON_PASSWORD}
       - SERVER_PORT=8086
       - barcode.service.base=http://barcodes-go:8082
-      - SPRING_FLYWAY_ENABLED=true
+      - SPRING_FLYWAY_ENABLED=false
     depends_on:
-      postgres:
-        condition: service_healthy
+      - redis
 
   enrichment-java-spring:
     build:
       context: ./services/enrichment-java-spring
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/rxlog
-      - SPRING_DATASOURCE_USERNAME=rxlog
-      - SPRING_DATASOURCE_PASSWORD=rxlog
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${NEON_HOST}:5432/${NEON_DB}?sslmode=require
+      - SPRING_DATASOURCE_USERNAME=${NEON_USER}
+      - SPRING_DATASOURCE_PASSWORD=${NEON_PASSWORD}
       - SPRING_FLYWAY_ENABLED=false
-      # robust: keine Env-Name-Mappings raten, sondern exakt setzen:
       - SPRING_APPLICATION_JSON={"spring":{"flyway":{"enabled":false}},"bookservice":{"baseUrl":"http://bookservice-java-spring:8086"},"worker":{"enabled":true,"batchSize":100,"pollDelayMs":200}}
     depends_on:
-      postgres:
-        condition: service_healthy
-      bookservice-java-spring:
-        condition: service_started
+      - bookservice-java-spring
 
   barcodes-go:
     build:
       context: ./services/barcodes-go
     environment:
-      - DATABASE_URL=postgres://rxlog:rxlog@postgres:5432/rxlog?sslmode=disable
+      - DATABASE_URL=postgres://${NEON_USER}:${NEON_PASSWORD}@${NEON_HOST}:5432/${NEON_DB}?sslmode=require
       - REDIS_ADDR=redis:6379
       - SERVICE_PORT=8082
       - SIZERULES_FILE=/config/sizerules.csv
       - BARCODE_RANKING_FILE=/config/barcode-ranking.txt
     depends_on:
-      - postgres
       - redis
     volumes:
       - ./config:/config
     ports:
       - "8082:8082"
-
-volumes:
-  pg_data:

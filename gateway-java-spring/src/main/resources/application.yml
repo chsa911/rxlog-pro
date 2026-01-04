@@ -1,5 +1,7 @@
 server:
   port: ${SERVER_PORT:8080}
+  ssl:
+    enabled: false
 
 spring:
   main:
@@ -19,7 +21,6 @@ spring:
           uri: ${BARCODES_URL:http://localhost:8087}
           predicates:
             - Path=/api/barcodes/**
-
 management:
   endpoints:
     web:

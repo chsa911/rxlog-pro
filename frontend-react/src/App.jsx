@@ -1,6 +1,7 @@
 // frontend-react/src/App.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { parseDimensionToMM } from './lib/dimensions';
+import SyncIssuesPanel from './app/syncIssues/SyncIssuesPanel';
 
 export default function App() {
   // core form state
@@ -211,6 +212,41 @@ export default function App() {
   }
 
   // ---------------------------
+  // Analytics – Top Authors
+  // ---------------------------
+  const [aFinished, setAFinished] = useState(true);
+  const [aAbandoned, setAAbandoned] = useState(true);
+  const [aLimit, setALimit] = useState(10);
+
+  const [topAuthors, setTopAuthors] = useState([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState('');
+
+  async function loadTopAuthors() {
+    setAnalyticsLoading(true);
+    setAnalyticsError('');
+    try {
+      const statuses = [];
+      if (aFinished) statuses.push('finished');
+      if (aAbandoned) statuses.push('abandoned');
+      const statusParam = statuses.length ? statuses.join(',') : 'finished,abandoned';
+
+      const params = new URLSearchParams();
+      params.set('statuses', statusParam);
+      params.set('limit', String(aLimit));
+
+      const res = await fetch('/api/register/analytics/top-authors?' + params.toString());
+      if (!res.ok) throw new Error(`Analytics failed: ${res.status}`);
+      const data = await res.json();
+      setTopAuthors(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setAnalyticsError(e?.message || String(e));
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }
+
+  // ---------------------------
   // Search & Update (inline)
   // ---------------------------
   const [adminOpen, setAdminOpen] = useState(false);
@@ -293,7 +329,7 @@ export default function App() {
       const list = Array.isArray(data) ? data : data.items || data.results || [];
       setResults(list.map(normalizeRow));
     } catch (e) {
-      setSearchError(e.message || String(e));
+      setSearchError(e?.message || String(e));
     } finally {
       setSearchLoading(false);
     }
@@ -317,9 +353,7 @@ export default function App() {
   // NEW, safer version
   async function saveRow(id) {
     // 1) mark row as saving
-    setResults((rows) =>
-      rows.map((r) => (r.id === id ? { ...r, _saving: true, _msg: '' } : r)),
-    );
+    setResults((rows) => rows.map((r) => (r.id === id ? { ...r, _saving: true, _msg: '' } : r)));
 
     // 2) snapshot current row
     const row = results.find((r) => r.id === id);
@@ -356,16 +390,13 @@ export default function App() {
     const barcodesNormalized = splitBarcodes(row.barcodesInput);
     const origBarcodesNormalized = splitBarcodes(orig.barcodesInput || '');
     const sameLen = barcodesNormalized.length === origBarcodesNormalized.length;
-    const sameSet =
-      sameLen && barcodesNormalized.every((b, i) => b === origBarcodesNormalized[i]);
+    const sameSet = sameLen && barcodesNormalized.every((b, i) => b === origBarcodesNormalized[i]);
     if (!sameSet) payload.barcodes = barcodesNormalized;
 
     // 3) no changes → reset saving and exit
     if (Object.keys(payload).length === 0) {
       setResults((rows) =>
-        rows.map((r) =>
-          r.id === id ? { ...r, _saving: false, _msg: 'Keine Änderungen' } : r,
-        ),
+        rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: 'Keine Änderungen' } : r)),
       );
       return;
     }
@@ -387,9 +418,7 @@ export default function App() {
 
           const nextWidthMM = widthChanged ? parsedW || null : r.widthMM;
           const nextHeightMM = heightChanged ? parsedH || null : r.heightMM;
-          const nextBarcodesInput = !sameSet
-            ? barcodesNormalized.join(', ')
-            : r.barcodesInput;
+          const nextBarcodesInput = !sameSet ? barcodesNormalized.join(', ') : r.barcodesInput;
 
           return {
             ...r,
@@ -412,9 +441,7 @@ export default function App() {
     } catch (e) {
       // 5) error: clear _saving and show error
       setResults((rows) =>
-        rows.map((r) =>
-          r.id === id ? { ...r, _saving: false, _msg: `Fehler: ${e.message}` } : r,
-        ),
+        rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: `Fehler: ${e.message}` } : r)),
       );
     }
   }
@@ -454,11 +481,7 @@ export default function App() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
           <label>
             Schlagwort 1
-            <input
-              required
-              value={titleKeyword}
-              onChange={(e) => setTitleKeyword(e.target.value)}
-            />
+            <input required value={titleKeyword} onChange={(e) => setTitleKeyword(e.target.value)} />
           </label>
           <label>
             Position 1
@@ -502,13 +525,7 @@ export default function App() {
 
         <label>
           Seitenzahl
-          <input
-            required
-            type="number"
-            min={1}
-            value={pages}
-            onChange={(e) => setPages(e.target.value)}
-          />
+          <input required type="number" min={1} value={pages} onChange={(e) => setPages(e.target.value)} />
         </label>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
@@ -585,8 +602,7 @@ export default function App() {
         </fieldset>
 
         <label>
-          <input type="checkbox" checked={topBook} onChange={(e) => setTopBook(e.target.checked)} />{' '}
-          Top-Buch
+          <input type="checkbox" checked={topBook} onChange={(e) => setTopBook(e.target.checked)} /> Top-Buch
         </label>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -596,18 +612,10 @@ export default function App() {
         </div>
 
         {barcode && (
-          <div
-            style={{
-              background: '#f6f8fa',
-              padding: '0.5rem',
-              borderRadius: 8,
-              marginTop: '0.5rem',
-            }}
-          >
+          <div style={{ background: '#f6f8fa', padding: '0.5rem', borderRadius: 8, marginTop: '0.5rem' }}>
             <b>Barcode:</b> {barcode}{' '}
             {color || position ? (
               <>
-                {' '}
                 (<span>{color || '-'}</span> · <span>{position || '-'}</span>)
               </>
             ) : null}
@@ -620,12 +628,108 @@ export default function App() {
         {log.join('\n')}
       </pre>
 
+      {/* --- Analytics section --- */}
+      <details style={{ marginTop: '1.5rem' }}>
+        <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
+          📊 Analytics – Top Authors
+        </summary>
+
+        <div
+          style={{
+            marginTop: '0.75rem',
+            background: '#fafbfc',
+            border: '1px solid #e5e7eb',
+            borderRadius: 10,
+            padding: '1rem',
+          }}
+        >
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <label>
+              <input type="checkbox" checked={aFinished} onChange={(e) => setAFinished(e.target.checked)} /> finished
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={aAbandoned}
+                onChange={(e) => setAAbandoned(e.target.checked)}
+              />{' '}
+              abandoned
+            </label>
+
+            <label>
+              Limit{' '}
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={aLimit}
+                onChange={(e) => setALimit(Number(e.target.value))}
+                style={{ width: 80 }}
+              />
+            </label>
+
+            <button type="button" onClick={loadTopAuthors} disabled={analyticsLoading}>
+              {analyticsLoading ? 'Lade…' : 'Laden'}
+            </button>
+          </div>
+
+          {analyticsError && <div style={{ color: '#b00020', marginTop: 10 }}>Fehler: {analyticsError}</div>}
+
+          {topAuthors.length > 0 && (
+            <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th align="left">Author</th>
+                  <th align="right">Finished</th>
+                  <th align="right">Abandoned</th>
+                  <th align="right">Total</th>
+                  <th align="right">Pages</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topAuthors.map((a) => (
+                  <tr key={a.author}>
+                    <td>{a.author}</td>
+                    <td align="right">{a.finished}</td>
+                    <td align="right">{a.abandoned}</td>
+                    <td align="right">
+                      <b>{a.total}</b>
+                    </td>
+                    <td align="right">{a.pages}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {!analyticsLoading && !analyticsError && topAuthors.length === 0 && (
+            <div style={{ color: '#666', marginTop: 10 }}>Noch keine Daten geladen.</div>
+          )}
+        </div>
+      </details>
+
+      {/* --- Sync Issues section --- */}
+      <details style={{ marginTop: '1.5rem' }}>
+        <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
+          ⚠️ Sync Issues
+        </summary>
+
+        <div
+          style={{
+            marginTop: '0.75rem',
+            background: '#fafbfc',
+            border: '1px solid #e5e7eb',
+            borderRadius: 10,
+            padding: '1rem',
+          }}
+        >
+          <SyncIssuesPanel />
+        </div>
+      </details>
+
       {/* --- Search & Update section --- */}
-      <details
-        open={adminOpen}
-        onToggle={(e) => setAdminOpen(e.target.open)}
-        style={{ marginTop: '2rem' }}
-      >
+      <details open={adminOpen} onToggle={(e) => setAdminOpen(e.target.open)} style={{ marginTop: '2rem' }}>
         <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
           🔎 Search & Update
         </summary>
@@ -682,13 +786,7 @@ export default function App() {
             </label>
             <label>
               Limit
-              <input
-                type="number"
-                min={1}
-                max={200}
-                value={sLimit}
-                onChange={(e) => setSLimit(Number(e.target.value))}
-              />
+              <input type="number" min={1} max={200} value={sLimit} onChange={(e) => setSLimit(Number(e.target.value))} />
             </label>
           </div>
 
@@ -714,14 +812,10 @@ export default function App() {
             </button>
           </div>
 
-          {searchError && (
-            <div style={{ color: '#b00020', marginBottom: 8 }}>Fehler: {searchError}</div>
-          )}
+          {searchError && <div style={{ color: '#b00020', marginBottom: 8 }}>Fehler: {searchError}</div>}
 
           {results.length > 0 && (
-            <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
-              {results.length} Ergebnis(se)
-            </div>
+            <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{results.length} Ergebnis(se)</div>
           )}
 
           {results.length > 0 ? (
@@ -736,17 +830,9 @@ export default function App() {
                     background: '#fff',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'baseline',
-                      gap: 12,
-                    }}
-                  >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                     <div style={{ fontWeight: 600 }}>
-                      {row.author || '—'} ·{' '}
-                      <span style={{ color: '#666' }}>{row.publisher || '—'}</span>
+                      {row.author || '—'} · <span style={{ color: '#666' }}>{row.publisher || '—'}</span>
                     </div>
                     <div style={{ fontSize: 12, color: '#666' }}>ID: {row.id}</div>
                   </div>
@@ -765,9 +851,7 @@ export default function App() {
                         type="number"
                         min={1}
                         value={row.pages ?? ''}
-                        onChange={(e) =>
-                          updateRow(row.id, (r) => ({ ...r, pages: e.target.value }))
-                        }
+                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, pages: e.target.value }))}
                       />
                     </label>
 
@@ -775,9 +859,7 @@ export default function App() {
                       Status
                       <select
                         value={row.readingStatus}
-                        onChange={(e) =>
-                          updateRow(row.id, (r) => ({ ...r, readingStatus: e.target.value }))
-                        }
+                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, readingStatus: e.target.value }))}
                       >
                         <option value="in_progress">In Bearbeitung</option>
                         <option value="finished">Fertig</option>
@@ -790,9 +872,7 @@ export default function App() {
                       <input
                         type="checkbox"
                         checked={!!row.topBook}
-                        onChange={(e) =>
-                          updateRow(row.id, (r) => ({ ...r, topBook: e.target.checked }))
-                        }
+                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, topBook: e.target.checked }))}
                       />
                     </label>
 
@@ -800,14 +880,9 @@ export default function App() {
                       Breite (mm/cm)
                       <input
                         value={row.widthRawRow}
-                        onChange={(e) =>
-                          updateRow(row.id, (r) => ({ ...r, widthRawRow: e.target.value }))
-                        }
+                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, widthRawRow: e.target.value }))}
                         onBlur={() =>
-                          updateRow(row.id, (r) => ({
-                            ...r,
-                            widthMM: parseDimensionToMM(r.widthRawRow),
-                          }))
+                          updateRow(row.id, (r) => ({ ...r, widthMM: parseDimensionToMM(r.widthRawRow) }))
                         }
                         placeholder="z. B. 105 mm / 10,5 cm / 10"
                         inputMode="decimal"
@@ -818,14 +893,9 @@ export default function App() {
                       Höhe (mm/cm)
                       <input
                         value={row.heightRawRow}
-                        onChange={(e) =>
-                          updateRow(row.id, (r) => ({ ...r, heightRawRow: e.target.value }))
-                        }
+                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, heightRawRow: e.target.value }))}
                         onBlur={() =>
-                          updateRow(row.id, (r) => ({
-                            ...r,
-                            heightMM: parseDimensionToMM(r.heightRawRow),
-                          }))
+                          updateRow(row.id, (r) => ({ ...r, heightMM: parseDimensionToMM(r.heightRawRow) }))
                         }
                         placeholder="z. B. 190 mm / 19 cm / 19"
                         inputMode="decimal"
@@ -836,26 +906,9 @@ export default function App() {
                       Barcodes (kommagetrennt)
                       <input
                         value={row.barcodesInput}
-                        onChange={(e) =>
-                          updateRow(row.id, (r) => ({ ...r, barcodesInput: e.target.value }))
-                        }
-                        placeholder="978..., 978..."
+                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, barcodesInput: e.target.value }))}
                       />
                     </label>
-                  </div>
-
-                  <div style={{ color: '#555', fontSize: 12, marginTop: 6 }}>
-                    Normalisiert:&nbsp;
-                    {row.widthMM != null && (
-                      <>
-                        Breite <b>{row.widthMM} mm</b> ({(row.widthMM / 10).toFixed(1)} cm)
-                      </>
-                    )}
-                    {row.heightMM != null && (
-                      <>
-                        , Höhe <b>{row.heightMM} mm</b> ({(row.heightMM / 10).toFixed(1)} cm)
-                      </>
-                    )}
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
@@ -865,12 +918,7 @@ export default function App() {
                     <button type="button" onClick={() => revertRow(row.id)} disabled={row._saving}>
                       Zurücksetzen
                     </button>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: row._msg.startsWith('Fehler') ? '#b00020' : '#555',
-                      }}
-                    >
+                    <span style={{ fontSize: 12, color: row._msg.startsWith('Fehler') ? '#b00020' : '#555' }}>
                       {row._msg}
                     </span>
                   </div>
