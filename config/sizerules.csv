@@ -1,4 +1,4 @@
-sizegroup,width_min_cm,width_max_cm,color,threshold_cm,low_prefix,high_prefix,special_prefix,special_exact_heights_cm
+sizegroup,width_min_cm,width_max_cm,color,threshold_cm,low_prefix,high_prefix,special_prefix,special_exact_heights_cm,rank_start_suffix,rank_end_suffix
 0,0.0,10.5,gk,17.5,dgk,ogk,lgk,20.5;21;21.5
 1,10.6,11.0,ak,18.0,dak,oak,lak,20.5;21;21.5
 2,11.1,11.4,kb,18.0,dkb,okb,lkb,20.5;21;21;21.5
@@ -6,7 +6,7 @@ sizegroup,width_min_cm,width_max_cm,color,threshold_cm,low_prefix,high_prefix,sp
 4,11.6,11.9,kg,19.0,dkg,okg,lkg,20.5;21;21.5
 5,12.0,12.0,s,18.5,ds,os,ls,20.5;21;21.5
 6,12.1,12.4,ki,19.0,dki,oki,lki,20.5;21;21.5
-7,12.5,12.5,"i, ik",19.0,"di, ik","oi, ik","li, ik",20.5;21;21.5
+7,12.5,12.5,"i, ik",19.0,"di, dik","oi, oik","li, lik",20.5;21;21.5,"001, 215","215, 530"
 8,12.6,13.0,k,20.0,dk,ok,lk,20.5;21;21.5
 9,13.1,13.4,kn,21.0,dkn,okn,lkn,20.5;21;21.5
 10,13.5,13.5,n,21.0,dn,on,ln,20.5;21;21.5
