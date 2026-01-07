@@ -405,7 +405,7 @@ public class BookDao {
 
             // employerfriendly history: only (book_id, barcode, created_at) needed; book data via join on book_id
             jdbc.update(
-                    "insert into barcodes_history (book_id, barcode, created_at) values (?::uuid, ?, ?)",
+                    "insert into barcodes_history (book_id, barcode, freed_at) values (?::uuid, ?, ?)",
                     bookId,
                     code,
                     Timestamp.from(releaseAt)
