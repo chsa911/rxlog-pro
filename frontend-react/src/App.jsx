@@ -1,13 +1,202 @@
 // frontend-react/src/App.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { parseDimensionToMM } from './lib/dimensions';
 import SyncIssuesPanel from './app/syncIssues/SyncIssuesPanel';
+
+// ---------------------------
+// ISBN helpers
+// ---------------------------
+function normalizeIsbn(input) {
+  return (input || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+}
+
+function pickKeywordsFromTitle(title) {
+  const stop = new Set([
+    // DE
+    'der',
+    'die',
+    'das',
+    'den',
+    'dem',
+    'des',
+    'ein',
+    'eine',
+    'einer',
+    'eines',
+    'einem',
+    'einen',
+    'und',
+    'oder',
+    'im',
+    'in',
+    'am',
+    'an',
+    'auf',
+    'aus',
+    'bei',
+    'mit',
+    'von',
+    'für',
+    'zum',
+    'zur',
+    'über',
+    'unter',
+    'durch',
+    'gegen',
+    'ohne',
+    'um',
+    // EN
+    'the',
+    'a',
+    'an',
+    'and',
+    'or',
+    'in',
+    'on',
+    'at',
+    'of',
+    'to',
+    'for',
+    'with',
+    'from',
+    'by',
+    'into',
+    'over',
+    'under',
+    'without',
+  ]);
+
+  const tokens = (title || '')
+    .split(/[\s:;,.!?(){}\[\]"'“”’\-–—/\\]+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+
+  const chosen = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const raw = tokens[i];
+    const cleaned = raw.replace(/[^\p{L}\p{N}]+/gu, '');
+    if (!cleaned) continue;
+
+    const low = cleaned.toLowerCase();
+    if (cleaned.length < 3) continue;
+    if (stop.has(low)) continue;
+    if (chosen.some((c) => c.kw.toLowerCase() === low)) continue;
+
+    chosen.push({ kw: cleaned, pos: i + 1 });
+    if (chosen.length >= 3) break;
+  }
+
+  return {
+    kw1: chosen[0]?.kw || '',
+    pos1: chosen[0]?.pos ? String(chosen[0].pos) : '',
+    kw2: chosen[1]?.kw || '',
+    pos2: chosen[1]?.pos ? String(chosen[1].pos) : '',
+    kw3: chosen[2]?.kw || '',
+    pos3: chosen[2]?.pos ? String(chosen[2].pos) : '',
+  };
+}
+
+async function fetchIsbnMetadata(cleanIsbn) {
+  // Always provide an Amazon search link (works almost always)
+  const amazonUrl = `https://www.amazon.de/s?k=${encodeURIComponent(cleanIsbn)}`;
+
+  // 1) Preferred: your backend proxy (if you add it)
+  try {
+    const res = await fetch(`/api/register/isbn/${cleanIsbn}`);
+    if (res.ok) {
+      const j = await res.json();
+      return {
+        isbn: cleanIsbn,
+        title: j.title || '',
+        authors: Array.isArray(j.authors) ? j.authors : [],
+        publisher: j.publisher || '',
+        pages: Number.isFinite(j.pages) ? j.pages : null,
+        coverUrl: j.coverUrl || '',
+        infoUrl: j.infoUrl || '',
+        buyUrl: j.buyUrl || '',
+        amazonUrl: j.amazonUrl || amazonUrl,
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2) Fallback: Google Books
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
+    if (res.ok) {
+      const j = await res.json();
+      const item = j?.items?.[0];
+      const v = item?.volumeInfo;
+      const sale = item?.saleInfo;
+      if (v) {
+        return {
+          isbn: cleanIsbn,
+          title: v.title || '',
+          authors: Array.isArray(v.authors) ? v.authors : [],
+          publisher: v.publisher || '',
+          pages: Number.isFinite(v.pageCount) ? v.pageCount : null,
+          coverUrl: v?.imageLinks?.thumbnail || v?.imageLinks?.smallThumbnail || '',
+          infoUrl: v.infoLink || v.previewLink || '',
+          buyUrl: sale?.buyLink || '',
+          amazonUrl,
+        };
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3) Fallback: Open Library
+  try {
+    const res = await fetch(
+      `https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`,
+    );
+    if (res.ok) {
+      const j = await res.json();
+      const b = j?.[`ISBN:${cleanIsbn}`];
+      if (b) {
+        const olInfo = b?.url
+          ? `https://openlibrary.org${b.url}`
+          : b?.key
+            ? `https://openlibrary.org${b.key}`
+            : '';
+
+        return {
+          isbn: cleanIsbn,
+          title: b.title || '',
+          authors: Array.isArray(b.authors) ? b.authors.map((a) => a?.name).filter(Boolean) : [],
+          publisher: b?.publishers?.[0]?.name || '',
+          pages: Number.isFinite(b.number_of_pages) ? b.number_of_pages : null,
+          coverUrl: b?.cover?.medium || b?.cover?.large || b?.cover?.small || '',
+          infoUrl: olInfo,
+          buyUrl: '',
+          amazonUrl,
+        };
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
 
 export default function App() {
   // core form state
   const [author, setAuthor] = useState('');
   const [publisher, setPublisher] = useState('');
   const [pages, setPages] = useState('');
+
+  // ISBN lookup (optional)
+  const [isbn, setIsbn] = useState('');
+  const [isbnStatus, setIsbnStatus] = useState(''); // '', 'loading', 'ok', 'notfound', 'error'
+  const [isbnTitlePreview, setIsbnTitlePreview] = useState('');
+  const [isbnCoverUrl, setIsbnCoverUrl] = useState('');
+  const [infoUrl, setInfoUrl] = useState('');
+  const [buyUrl, setBuyUrl] = useState('');
+  const [amazonUrl, setAmazonUrl] = useState('');
+  const lastIsbnLookupRef = useRef('');
 
   // match backend naming
   const [titleKeyword, setTitleKeyword] = useState('');
@@ -42,6 +231,107 @@ export default function App() {
   function handleHeightBlur() {
     setHeightMM(parseDimensionToMM(heightRaw));
   }
+
+  // ISBN effect (debounced)
+  useEffect(() => {
+    let cancelled = false;
+
+    const clean = normalizeIsbn(isbn);
+
+    if (!clean) {
+      setIsbnStatus('');
+      setIsbnTitlePreview('');
+      setIsbnCoverUrl('');
+      setInfoUrl('');
+      setBuyUrl('');
+      setAmazonUrl('');
+      lastIsbnLookupRef.current = '';
+      return;
+    }
+
+    if (!(clean.length === 10 || clean.length === 13)) {
+      setIsbnStatus('');
+      setIsbnTitlePreview('');
+      setIsbnCoverUrl('');
+      setInfoUrl('');
+      setBuyUrl('');
+      setAmazonUrl('');
+      return;
+    }
+
+    if (clean === lastIsbnLookupRef.current) return;
+
+    const t = setTimeout(async () => {
+      try {
+        setIsbnStatus('loading');
+
+        const meta = await fetchIsbnMetadata(clean);
+        if (cancelled) return;
+
+        lastIsbnLookupRef.current = clean;
+
+        if (!meta) {
+          setIsbnStatus('notfound');
+          setIsbnTitlePreview('');
+          setIsbnCoverUrl('');
+          setInfoUrl('');
+          setBuyUrl('');
+          setAmazonUrl(`https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
+          return;
+        }
+
+        setIsbnStatus('ok');
+        setIsbnTitlePreview(meta.title || '');
+        setIsbnCoverUrl(meta.coverUrl || '');
+        setInfoUrl(meta.infoUrl || '');
+        setBuyUrl(meta.buyUrl || '');
+        setAmazonUrl(meta.amazonUrl || `https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
+
+        // Fill only if empty (do not overwrite user input)
+        if (!author && meta.authors?.length) setAuthor(meta.authors.join(', '));
+        if (!publisher && meta.publisher) setPublisher(meta.publisher);
+        if (!pages && meta.pages) setPages(String(meta.pages));
+
+        if (meta.title) {
+          const picked = pickKeywordsFromTitle(meta.title);
+
+          if (!titleKeyword && picked.kw1) setTitleKeyword(picked.kw1);
+          if (!titleKeywordPosition && picked.pos1) setTitleKeywordPosition(picked.pos1);
+
+          if (!titleKeyword2 && picked.kw2) setTitleKeyword2(picked.kw2);
+          if (!titleKeyword2Position && picked.pos2) setTitleKeyword2Position(picked.pos2);
+
+          if (!titleKeyword3 && picked.kw3) setTitleKeyword3(picked.kw3);
+          if (!titleKeyword3Position && picked.pos3) setTitleKeyword3Position(picked.pos3);
+        }
+      } catch {
+        if (cancelled) return;
+        lastIsbnLookupRef.current = clean;
+        setIsbnStatus('error');
+        setIsbnTitlePreview('');
+        setIsbnCoverUrl('');
+        setInfoUrl('');
+        setBuyUrl('');
+        setAmazonUrl(`https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    isbn,
+    author,
+    publisher,
+    pages,
+    titleKeyword,
+    titleKeywordPosition,
+    titleKeyword2,
+    titleKeyword2Position,
+    titleKeyword3,
+    titleKeyword3Position,
+  ]);
 
   // release helper
   async function releaseCurrentBarcode(reason = '') {
@@ -147,7 +437,11 @@ export default function App() {
       return;
     }
 
-    const payload = {
+    const cleanIsbn = normalizeIsbn(isbn);
+    const effectivePurchaseUrl = buyUrl || infoUrl || amazonUrl || '';
+
+    // Base payload (current backend)
+    const basePayload = {
       author,
       publisher,
       pages: pages ? Number(pages) : null,
@@ -169,12 +463,35 @@ export default function App() {
       height: heightMM,
     };
 
-    try {
-      const res = await fetch('/api/register/book', {
+    // Extended payload (store links if backend supports)
+    const payloadWithLinks = {
+      ...basePayload,
+      isbn: cleanIsbn || null,
+      purchaseUrl: effectivePurchaseUrl || null,
+      infoUrl: infoUrl || null,
+      buyUrl: buyUrl || null,
+      amazonUrl: amazonUrl || null,
+    };
+
+    async function postRegister(payload) {
+      return fetch('/api/register/book', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
+    }
+
+    try {
+      // Try to store links. If backend doesn’t accept it (often 400), retry with base payload.
+      let res = await postRegister(payloadWithLinks);
+
+      if (!res.ok && res.status === 400) {
+        // fallback: keep registration working even if backend DTO isn't updated yet
+        res = await postRegister(basePayload);
+        if (res.ok) {
+          setLog((l) => ['Hinweis: Links nicht gespeichert (Backend noch ohne Felder).', ...l]);
+        }
+      }
 
       if (!res.ok) {
         await releaseCurrentBarcode('Registrierung fehlgeschlagen');
@@ -194,6 +511,16 @@ export default function App() {
     setAuthor('');
     setPublisher('');
     setPages('');
+
+    setIsbn('');
+    setIsbnStatus('');
+    setIsbnTitlePreview('');
+    setIsbnCoverUrl('');
+    setInfoUrl('');
+    setBuyUrl('');
+    setAmazonUrl('');
+    lastIsbnLookupRef.current = '';
+
     setTitleKeyword('');
     setTitleKeywordPosition('');
     setTitleKeyword2('');
@@ -284,6 +611,10 @@ export default function App() {
       heightRawRow: height != null ? String(height) : '',
       barcodes,
       barcodesInput: barcodes.join(', '),
+
+      // optional link fields if backend ever returns them
+      purchaseUrl: b.purchaseUrl || b.buyUrl || b.amazonUrl || b.infoUrl || b.link || '',
+
       _saving: false,
       _msg: '',
     };
@@ -350,12 +681,9 @@ export default function App() {
     }));
   }
 
-  // NEW, safer version
   async function saveRow(id) {
-    // 1) mark row as saving
     setResults((rows) => rows.map((r) => (r.id === id ? { ...r, _saving: true, _msg: '' } : r)));
 
-    // 2) snapshot current row
     const row = results.find((r) => r.id === id);
     if (!row) {
       setResults((rows) =>
@@ -367,17 +695,10 @@ export default function App() {
     const orig = row._orig || {};
     const payload = {};
 
-    if (row.pages !== orig.pages && row.pages !== '') {
-      payload.pages = Number(row.pages);
-    }
-    if (row.readingStatus !== orig.readingStatus) {
-      payload.readingStatus = row.readingStatus;
-    }
-    if (row.topBook !== orig.topBook) {
-      payload.topBook = !!row.topBook;
-    }
+    if (row.pages !== orig.pages && row.pages !== '') payload.pages = Number(row.pages);
+    if (row.readingStatus !== orig.readingStatus) payload.readingStatus = row.readingStatus;
+    if (row.topBook !== orig.topBook) payload.topBook = !!row.topBook;
 
-    // parse width/height raw → mm
     const parsedW = parseDimensionToMM(row.widthRawRow);
     const parsedH = parseDimensionToMM(row.heightRawRow);
 
@@ -386,14 +707,12 @@ export default function App() {
     if (widthChanged) payload.width = parsedW || null;
     if (heightChanged) payload.height = parsedH || null;
 
-    // barcodes: replace set if changed
     const barcodesNormalized = splitBarcodes(row.barcodesInput);
     const origBarcodesNormalized = splitBarcodes(orig.barcodesInput || '');
     const sameLen = barcodesNormalized.length === origBarcodesNormalized.length;
     const sameSet = sameLen && barcodesNormalized.every((b, i) => b === origBarcodesNormalized[i]);
     if (!sameSet) payload.barcodes = barcodesNormalized;
 
-    // 3) no changes → reset saving and exit
     if (Object.keys(payload).length === 0) {
       setResults((rows) =>
         rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: 'Keine Änderungen' } : r)),
@@ -407,11 +726,8 @@ export default function App() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        throw new Error(`Update fehlgeschlagen: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Update fehlgeschlagen: ${res.status}`);
 
-      // 4) success: clear _saving, update _orig
       setResults((rows) =>
         rows.map((r) => {
           if (r.id !== id) return r;
@@ -439,7 +755,6 @@ export default function App() {
         }),
       );
     } catch (e) {
-      // 5) error: clear _saving and show error
       setResults((rows) =>
         rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: `Fehler: ${e.message}` } : r)),
       );
@@ -459,13 +774,74 @@ export default function App() {
 
       <form onSubmit={onSubmit} className="grid" style={{ gap: '0.75rem', maxWidth: 720 }}>
         <label>
-          Autor
+          ISBN (optional)
           <input
-            required
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            placeholder="z. B. T. Fontane"
+            value={isbn}
+            onChange={(e) => setIsbn(e.target.value)}
+            placeholder="z. B. 9780140328721"
+            inputMode="numeric"
+            autoComplete="off"
           />
+
+          <div
+            style={{
+              fontSize: 12,
+              color: '#555',
+              marginTop: 4,
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              {isbnStatus === 'loading' && 'Suche…'}
+              {isbnStatus === 'ok' && 'Übernommen.'}
+              {isbnStatus === 'notfound' && 'Nicht gefunden.'}
+              {isbnStatus === 'error' && 'Fehler bei der Suche.'}
+            </span>
+
+            {isbnTitlePreview ? (
+              <span style={{ color: '#333' }}>
+                Titel: <b>{isbnTitlePreview}</b>
+              </span>
+            ) : null}
+
+            {(buyUrl || infoUrl || amazonUrl) && (
+              <span style={{ display: 'inline-flex', gap: 10 }}>
+                {buyUrl ? (
+                  <a href={buyUrl} target="_blank" rel="noopener noreferrer">
+                    Kaufen
+                  </a>
+                ) : null}
+                {infoUrl ? (
+                  <a href={infoUrl} target="_blank" rel="noopener noreferrer">
+                    Info
+                  </a>
+                ) : null}
+                {amazonUrl ? (
+                  <a href={amazonUrl} target="_blank" rel="noopener noreferrer">
+                    Amazon
+                  </a>
+                ) : null}
+              </span>
+            )}
+          </div>
+
+          {isbnCoverUrl ? (
+            <div style={{ marginTop: 6 }}>
+              <img
+                src={isbnCoverUrl}
+                alt=""
+                style={{ width: 60, height: 'auto', borderRadius: 6, border: '1px solid #e5e7eb' }}
+              />
+            </div>
+          ) : null}
+        </label>
+
+        <label>
+          Autor
+          <input required value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="z. B. T. Fontane" />
         </label>
 
         <label>
@@ -649,12 +1025,7 @@ export default function App() {
             </label>
 
             <label>
-              <input
-                type="checkbox"
-                checked={aAbandoned}
-                onChange={(e) => setAAbandoned(e.target.checked)}
-              />{' '}
-              abandoned
+              <input type="checkbox" checked={aAbandoned} onChange={(e) => setAAbandoned(e.target.checked)} /> abandoned
             </label>
 
             <label>
@@ -833,6 +1204,13 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                     <div style={{ fontWeight: 600 }}>
                       {row.author || '—'} · <span style={{ color: '#666' }}>{row.publisher || '—'}</span>
+                      {row.purchaseUrl ? (
+                        <span style={{ marginLeft: 10, fontWeight: 400, fontSize: 12 }}>
+                          <a href={row.purchaseUrl} target="_blank" rel="noopener noreferrer">
+                            Link
+                          </a>
+                        </span>
+                      ) : null}
                     </div>
                     <div style={{ fontSize: 12, color: '#666' }}>ID: {row.id}</div>
                   </div>
