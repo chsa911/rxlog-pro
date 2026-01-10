@@ -96,11 +96,13 @@ function pickKeywordsFromTitle(title) {
   };
 }
 
+// ---------------------------
+// ISBN -> Metadata lookup (already existing)
+// ---------------------------
 async function fetchIsbnMetadata(cleanIsbn) {
-  // Always provide an Amazon search link (works almost always)
   const amazonUrl = `https://www.amazon.de/s?k=${encodeURIComponent(cleanIsbn)}`;
 
-  // 1) Preferred: your backend proxy (if you add it)
+  // 1) Preferred: backend proxy
   try {
     const res = await fetch(`/api/register/isbn/${cleanIsbn}`);
     if (res.ok) {
@@ -121,7 +123,7 @@ async function fetchIsbnMetadata(cleanIsbn) {
     // ignore
   }
 
-  // 2) Fallback: Google Books
+  // 2) Google Books
   try {
     const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
     if (res.ok) {
@@ -147,7 +149,7 @@ async function fetchIsbnMetadata(cleanIsbn) {
     // ignore
   }
 
-  // 3) Fallback: Open Library
+  // 3) Open Library
   try {
     const res = await fetch(
       `https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`,
@@ -188,15 +190,23 @@ export default function App() {
   const [publisher, setPublisher] = useState('');
   const [pages, setPages] = useState('');
 
-  // ISBN lookup (optional)
+  // full title field
+  const [fullTitle, setFullTitle] = useState('');
+
+  // ISBN lookup
   const [isbn, setIsbn] = useState('');
   const [isbnStatus, setIsbnStatus] = useState(''); // '', 'loading', 'ok', 'notfound', 'error'
   const [isbnTitlePreview, setIsbnTitlePreview] = useState('');
+  const [isbnAuthorsPreview, setIsbnAuthorsPreview] = useState(''); // tooltip text
   const [isbnCoverUrl, setIsbnCoverUrl] = useState('');
   const [infoUrl, setInfoUrl] = useState('');
   const [buyUrl, setBuyUrl] = useState('');
   const [amazonUrl, setAmazonUrl] = useState('');
   const lastIsbnLookupRef = useRef('');
+
+  // --- NEW: Reverse ISBN lookup (author/title/publisher -> ISBN candidates)
+  const [isbnFindStatus, setIsbnFindStatus] = useState(''); // '', 'loading', 'error'
+  const [isbnCandidates, setIsbnCandidates] = useState([]); // [{ isbn, title, authors, publisher }]
 
   // match backend naming
   const [titleKeyword, setTitleKeyword] = useState('');
@@ -231,8 +241,76 @@ export default function App() {
   function handleHeightBlur() {
     setHeightMM(parseDimensionToMM(heightRaw));
   }
+// ---------------------------
+// Find ISBN candidates from author/title/publisher (Google Books)// GET /api/register/isbn/search?author=...&title=...&publisher=...&limit=8
+// ---------------------------
+async function findIsbnCandidates() {
+  const titleQ = [titleKeyword, titleKeyword2, titleKeyword3].filter(Boolean).join(' ').trim();
+  const a = (author || '').trim();
+  const p = (publisher || '').trim();
 
-  // ISBN effect (debounced)
+  if (!titleQ && !a && !p) {
+    setLog((l) => ['ISBN-Suche: Bitte Autor/Verlag/Titel-Stichwort(e) eingeben.', ...l]);
+    return;
+  }
+
+  setIsbnFindStatus('loading');
+  setIsbnCandidates([]);
+
+  try {
+    const parts = [];
+    if (a) parts.push(`inauthor:${a}`);
+    if (p) parts.push(`inpublisher:${p}`);
+    if (titleQ) parts.push(`intitle:${titleQ}`);
+
+    const q = encodeURIComponent(parts.join(' '));
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=8`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Google Books ${res.status}`);
+
+    const j = await res.json();
+    const items = Array.isArray(j?.items) ? j.items : [];
+
+    const seen = new Set();
+    const cands = items
+      .map((it) => {
+        const v = it?.volumeInfo;
+        if (!v) return null;
+
+        const ids = Array.isArray(v.industryIdentifiers) ? v.industryIdentifiers : [];
+        const isbn13 = ids.find((x) => x.type === 'ISBN_13')?.identifier;
+        const isbn10 = ids.find((x) => x.type === 'ISBN_10')?.identifier;
+        const raw = isbn13 || isbn10;
+        if (!raw) return null;
+
+        const clean = normalizeIsbn(raw);
+        if (!clean || seen.has(clean)) return null;
+        seen.add(clean);
+
+        return {
+          isbn: clean,
+          title: v.title || '',
+          authors: Array.isArray(v.authors) ? v.authors.join(', ') : '',
+          publisher: v.publisher || '',
+        };
+      })
+      .filter(Boolean);
+
+    setIsbnCandidates(cands);
+    setIsbnFindStatus('');
+
+    if (cands.length === 0) {
+      setLog((l) => ['ISBN-Suche (Google): Keine Treffer.', ...l]);
+    }
+  } catch (e) {
+    setIsbnFindStatus('error');
+    setLog((l) => [`ISBN-Suche (Google) Fehler: ${e?.message || String(e)}`, ...l]);
+  }
+}
+// ---------------------------
+  // ISBN effect (debounced)  ISBN -> metadata
+  // ---------------------------
   useEffect(() => {
     let cancelled = false;
 
@@ -241,10 +319,12 @@ export default function App() {
     if (!clean) {
       setIsbnStatus('');
       setIsbnTitlePreview('');
+      setIsbnAuthorsPreview('');
       setIsbnCoverUrl('');
       setInfoUrl('');
       setBuyUrl('');
       setAmazonUrl('');
+      setFullTitle('');
       lastIsbnLookupRef.current = '';
       return;
     }
@@ -252,10 +332,12 @@ export default function App() {
     if (!(clean.length === 10 || clean.length === 13)) {
       setIsbnStatus('');
       setIsbnTitlePreview('');
+      setIsbnAuthorsPreview('');
       setIsbnCoverUrl('');
       setInfoUrl('');
       setBuyUrl('');
       setAmazonUrl('');
+      setFullTitle('');
       return;
     }
 
@@ -273,19 +355,24 @@ export default function App() {
         if (!meta) {
           setIsbnStatus('notfound');
           setIsbnTitlePreview('');
+          setIsbnAuthorsPreview('');
           setIsbnCoverUrl('');
           setInfoUrl('');
           setBuyUrl('');
           setAmazonUrl(`https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
+          setFullTitle('');
           return;
         }
 
         setIsbnStatus('ok');
         setIsbnTitlePreview(meta.title || '');
+        setIsbnAuthorsPreview(meta.authors?.length ? meta.authors.join(', ') : '');
         setIsbnCoverUrl(meta.coverUrl || '');
         setInfoUrl(meta.infoUrl || '');
         setBuyUrl(meta.buyUrl || '');
         setAmazonUrl(meta.amazonUrl || `https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
+
+        setFullTitle(meta.title || '');
 
         // Fill only if empty (do not overwrite user input)
         if (!author && meta.authors?.length) setAuthor(meta.authors.join(', '));
@@ -309,10 +396,12 @@ export default function App() {
         lastIsbnLookupRef.current = clean;
         setIsbnStatus('error');
         setIsbnTitlePreview('');
+        setIsbnAuthorsPreview('');
         setIsbnCoverUrl('');
         setInfoUrl('');
         setBuyUrl('');
         setAmazonUrl(`https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
+        setFullTitle('');
       }
     }, 500);
 
@@ -440,13 +529,11 @@ export default function App() {
     const cleanIsbn = normalizeIsbn(isbn);
     const effectivePurchaseUrl = buyUrl || infoUrl || amazonUrl || '';
 
-    // Base payload (current backend)
     const basePayload = {
       author,
       publisher,
       pages: pages ? Number(pages) : null,
 
-      // match backend DTO exactly
       titleKeyword: titleKeyword || null,
       titleKeywordPosition: titleKeywordPosition ? Number(titleKeywordPosition) : null,
       titleKeyword2: titleKeyword2 || null,
@@ -458,19 +545,21 @@ export default function App() {
       readingStatus,
       topBook,
 
-      // mm for register service
       width: widthMM,
       height: heightMM,
     };
 
-    // Extended payload (store links if backend supports)
     const payloadWithLinks = {
       ...basePayload,
-      isbn: cleanIsbn || null,
+      isbn13: cleanIsbn || null,
+      purchaseSource: buyUrl
+        ? 'google_books_buy'
+        : infoUrl
+          ? 'google_books_info'
+          : amazonUrl
+            ? 'amazon_search'
+            : null,
       purchaseUrl: effectivePurchaseUrl || null,
-      infoUrl: infoUrl || null,
-      buyUrl: buyUrl || null,
-      amazonUrl: amazonUrl || null,
     };
 
     async function postRegister(payload) {
@@ -482,14 +571,12 @@ export default function App() {
     }
 
     try {
-      // Try to store links. If backend doesn’t accept it (often 400), retry with base payload.
       let res = await postRegister(payloadWithLinks);
 
       if (!res.ok && res.status === 400) {
-        // fallback: keep registration working even if backend DTO isn't updated yet
         res = await postRegister(basePayload);
         if (res.ok) {
-          setLog((l) => ['Hinweis: Links nicht gespeichert (Backend noch ohne Felder).', ...l]);
+          setLog((l) => ['Hinweis: ISBN/Link nicht gespeichert (Backend noch ohne Felder).', ...l]);
         }
       }
 
@@ -500,7 +587,7 @@ export default function App() {
 
       const data = await res.json();
       setLog((l) => [`Gespeichert: ${data.bookId} mit ${barcode} [${readingStatus}]`, ...l]);
-      resetForm(); // success
+      resetForm();
     } catch (err) {
       setLog((l) => [`Fehler: ${err.message}`, ...l]);
       alert(err.message);
@@ -511,15 +598,20 @@ export default function App() {
     setAuthor('');
     setPublisher('');
     setPages('');
+    setFullTitle('');
 
     setIsbn('');
     setIsbnStatus('');
     setIsbnTitlePreview('');
+    setIsbnAuthorsPreview('');
     setIsbnCoverUrl('');
     setInfoUrl('');
     setBuyUrl('');
     setAmazonUrl('');
     lastIsbnLookupRef.current = '';
+
+    setIsbnFindStatus('');
+    setIsbnCandidates([]);
 
     setTitleKeyword('');
     setTitleKeywordPosition('');
@@ -538,250 +630,60 @@ export default function App() {
     setTopBook(false);
   }
 
-  // ---------------------------
-  // Analytics – Top Authors
-  // ---------------------------
-  const [aFinished, setAFinished] = useState(true);
-  const [aAbandoned, setAAbandoned] = useState(true);
-  const [aLimit, setALimit] = useState(10);
-
-  const [topAuthors, setTopAuthors] = useState([]);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsError, setAnalyticsError] = useState('');
-
-  async function loadTopAuthors() {
-    setAnalyticsLoading(true);
-    setAnalyticsError('');
-    try {
-      const statuses = [];
-      if (aFinished) statuses.push('finished');
-      if (aAbandoned) statuses.push('abandoned');
-      const statusParam = statuses.length ? statuses.join(',') : 'finished,abandoned';
-
-      const params = new URLSearchParams();
-      params.set('statuses', statusParam);
-      params.set('limit', String(aLimit));
-
-      const res = await fetch('/api/register/analytics/top-authors?' + params.toString());
-      if (!res.ok) throw new Error(`Analytics failed: ${res.status}`);
-      const data = await res.json();
-      setTopAuthors(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setAnalyticsError(e?.message || String(e));
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  }
-
-  // ---------------------------
-  // Search & Update (inline)
-  // ---------------------------
-  const [adminOpen, setAdminOpen] = useState(false);
-
-  // search filters
-  const [sAuthor, setSAuthor] = useState('');
-  const [sPublisher, setSPublisher] = useState('');
-  const [sTitle, setSTitle] = useState('');
-  const [sBarcode, setSBarcode] = useState('');
-  const [sReadingStatus, setSReadingStatus] = useState(''); // '', in_progress, finished, abandoned
-  const [sTopBook, setSTopBook] = useState(''); // '', 'true', 'false'
-  const [sLimit, setSLimit] = useState(20);
-
-  // results
-  const [results, setResults] = useState([]); // array of rows
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState('');
-
-  function normalizeRow(b) {
-    const id = b.id ?? b.bookId ?? b.book_id ?? b.uuid;
-    const width = b.width_mm ?? b.width ?? null;
-    const height = b.height_mm ?? b.height ?? null;
-    const barcodes = Array.isArray(b.barcodes) ? b.barcodes : b.barcode ? [b.barcode] : [];
-
-    const base = {
-      id,
-      author: b.author || '',
-      publisher: b.publisher || '',
-      pages: b.pages ?? '',
-      readingStatus: b.readingStatus || 'in_progress',
-      topBook: !!b.topBook,
-      widthMM: width,
-      heightMM: height,
-      widthRawRow: width != null ? String(width) : '',
-      heightRawRow: height != null ? String(height) : '',
-      barcodes,
-      barcodesInput: barcodes.join(', '),
-
-      // optional link fields if backend ever returns them
-      purchaseUrl: b.purchaseUrl || b.buyUrl || b.amazonUrl || b.infoUrl || b.link || '',
-
-      _saving: false,
-      _msg: '',
-    };
-    base._orig = {
-      pages: base.pages,
-      readingStatus: base.readingStatus,
-      topBook: base.topBook,
-      widthMM: base.widthMM,
-      heightMM: base.heightMM,
-      barcodesInput: base.barcodesInput,
-    };
-    return base;
-  }
-
-  function splitBarcodes(input) {
-    return input
-      .split(/[\s,;]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
-  function updateRow(id, updater) {
-    setResults((rows) => rows.map((r) => (r.id === id ? updater({ ...r }) : r)));
-  }
-
-  async function runSearch() {
-    setSearchLoading(true);
-    setSearchError('');
-    try {
-      const params = new URLSearchParams();
-      if (sAuthor) params.set('author', sAuthor);
-      if (sPublisher) params.set('publisher', sPublisher);
-      if (sTitle) params.set('title', sTitle);
-      if (sBarcode) params.set('barcode', sBarcode);
-      if (sReadingStatus) params.set('readingStatus', sReadingStatus);
-      if (sTopBook) params.set('topBook', sTopBook);
-      if (sLimit) params.set('limit', String(sLimit));
-
-      const res = await fetch('/api/register/books?' + params.toString());
-      if (!res.ok) throw new Error(`Suche fehlgeschlagen: ${res.status}`);
-
-      const data = await res.json().catch(() => []);
-      const list = Array.isArray(data) ? data : data.items || data.results || [];
-      setResults(list.map(normalizeRow));
-    } catch (e) {
-      setSearchError(e?.message || String(e));
-    } finally {
-      setSearchLoading(false);
-    }
-  }
-
-  function revertRow(id) {
-    updateRow(id, (r) => ({
-      ...r,
-      pages: r._orig.pages,
-      readingStatus: r._orig.readingStatus,
-      topBook: r._orig.topBook,
-      widthMM: r._orig.widthMM,
-      heightMM: r._orig.heightMM,
-      widthRawRow: r._orig.widthMM != null ? String(r._orig.widthMM) : '',
-      heightRawRow: r._orig.heightMM != null ? String(r._orig.heightMM) : '',
-      barcodesInput: r._orig.barcodesInput,
-      _msg: 'Zurückgesetzt',
-    }));
-  }
-
-  async function saveRow(id) {
-    setResults((rows) => rows.map((r) => (r.id === id ? { ...r, _saving: true, _msg: '' } : r)));
-
-    const row = results.find((r) => r.id === id);
-    if (!row) {
-      setResults((rows) =>
-        rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: 'Nicht gefunden' } : r)),
-      );
-      return;
-    }
-
-    const orig = row._orig || {};
-    const payload = {};
-
-    if (row.pages !== orig.pages && row.pages !== '') payload.pages = Number(row.pages);
-    if (row.readingStatus !== orig.readingStatus) payload.readingStatus = row.readingStatus;
-    if (row.topBook !== orig.topBook) payload.topBook = !!row.topBook;
-
-    const parsedW = parseDimensionToMM(row.widthRawRow);
-    const parsedH = parseDimensionToMM(row.heightRawRow);
-
-    const widthChanged = (parsedW || null) !== (orig.widthMM || null);
-    const heightChanged = (parsedH || null) !== (orig.heightMM || null);
-    if (widthChanged) payload.width = parsedW || null;
-    if (heightChanged) payload.height = parsedH || null;
-
-    const barcodesNormalized = splitBarcodes(row.barcodesInput);
-    const origBarcodesNormalized = splitBarcodes(orig.barcodesInput || '');
-    const sameLen = barcodesNormalized.length === origBarcodesNormalized.length;
-    const sameSet = sameLen && barcodesNormalized.every((b, i) => b === origBarcodesNormalized[i]);
-    if (!sameSet) payload.barcodes = barcodesNormalized;
-
-    if (Object.keys(payload).length === 0) {
-      setResults((rows) =>
-        rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: 'Keine Änderungen' } : r)),
-      );
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/register/books/${id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Update fehlgeschlagen: ${res.status}`);
-
-      setResults((rows) =>
-        rows.map((r) => {
-          if (r.id !== id) return r;
-
-          const nextWidthMM = widthChanged ? parsedW || null : r.widthMM;
-          const nextHeightMM = heightChanged ? parsedH || null : r.heightMM;
-          const nextBarcodesInput = !sameSet ? barcodesNormalized.join(', ') : r.barcodesInput;
-
-          return {
-            ...r,
-            _saving: false,
-            _msg: 'Gespeichert',
-            widthMM: nextWidthMM,
-            heightMM: nextHeightMM,
-            barcodesInput: nextBarcodesInput,
-            _orig: {
-              pages: r.pages,
-              readingStatus: r.readingStatus,
-              topBook: r.topBook,
-              widthMM: nextWidthMM,
-              heightMM: nextHeightMM,
-              barcodesInput: nextBarcodesInput,
-            },
-          };
-        }),
-      );
-    } catch (e) {
-      setResults((rows) =>
-        rows.map((r) => (r.id === id ? { ...r, _saving: false, _msg: `Fehler: ${e.message}` } : r)),
-      );
-    }
-  }
+  // Tooltip text
+  const isbnTooltip = isbnTitlePreview
+    ? `ISBN → ${isbnTitlePreview}${isbnAuthorsPreview ? ` — ${isbnAuthorsPreview}` : ''}`
+    : 'Keine ISBN-Infos geladen';
 
   return (
-    <div
-      style={{
-        fontFamily: 'system-ui, sans-serif',
-        padding: '2rem',
-        maxWidth: 900,
-        margin: '0 auto',
-      }}
-    >
+    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem', maxWidth: 900, margin: '0 auto' }}>
       <h1>RxLog – Buch registrieren</h1>
 
       <form onSubmit={onSubmit} className="grid" style={{ gap: '0.75rem', maxWidth: 720 }}>
         <label>
           ISBN (optional)
-          <input
-            value={isbn}
-            onChange={(e) => setIsbn(e.target.value)}
-            placeholder="z. B. 9780140328721"
-            inputMode="numeric"
-            autoComplete="off"
-          />
+
+          {/* ISBN input + reverse search button + tooltip */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={isbn}
+              onChange={(e) => {
+                setIsbn(e.target.value);
+                // close candidate list when user starts typing ISBN manually
+                setIsbnCandidates([]);
+                setIsbnFindStatus('');
+              }}
+              placeholder="z. B. 9780140328721"
+              inputMode="numeric"
+              autoComplete="off"
+              style={{ flex: 1 }}
+            />
+
+            <button
+              type="button"
+              onClick={findIsbnCandidates}
+              disabled={isbnFindStatus === 'loading'}
+              title="ISBN anhand Autor/Verlag/Titel suchen"
+            >
+              {isbnFindStatus === 'loading' ? 'Suche…' : 'ISBN suchen'}
+            </button>
+
+            <span
+              title={isbnTooltip}
+              style={{
+                cursor: 'help',
+                userSelect: 'none',
+                fontSize: 14,
+                padding: '2px 6px',
+                border: '1px solid #e5e7eb',
+                borderRadius: 6,
+                background: '#fff',
+                lineHeight: '20px',
+              }}
+            >
+              ℹ️
+            </span>
+          </div>
 
           <div
             style={{
@@ -800,12 +702,6 @@ export default function App() {
               {isbnStatus === 'notfound' && 'Nicht gefunden.'}
               {isbnStatus === 'error' && 'Fehler bei der Suche.'}
             </span>
-
-            {isbnTitlePreview ? (
-              <span style={{ color: '#333' }}>
-                Titel: <b>{isbnTitlePreview}</b>
-              </span>
-            ) : null}
 
             {(buyUrl || infoUrl || amazonUrl) && (
               <span style={{ display: 'inline-flex', gap: 10 }}>
@@ -828,6 +724,49 @@ export default function App() {
             )}
           </div>
 
+          {/* Candidate list (reverse lookup) */}
+          {isbnCandidates.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 13 }}>
+              <div style={{ color: '#555', marginBottom: 6 }}>Gefundene Kandidaten (bitte auswählen):</div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {isbnCandidates.map((c) => (
+                  <button
+                    key={c.isbn}
+                    type="button"
+                    onClick={() => {
+                      setIsbn(c.isbn);       // triggers ISBN->metadata effect
+                      setIsbnCandidates([]);
+                      setIsbnFindStatus('');
+                      setLog((l) => [`ISBN übernommen: ${c.isbn} (${c.title || '—'})`, ...l]);
+                    }}
+                    style={{
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 8,
+                      background: '#fff',
+                      cursor: 'pointer',
+                    }}
+                    title={`Übernehmen: ${c.isbn}`}
+                  >
+                    <div style={{ fontWeight: 600 }}>{c.title || '—'}</div>
+                    <div style={{ color: '#666' }}>
+                      {c.authors ? c.authors : '—'}
+                      {c.publisher ? ` · ${c.publisher}` : ''}
+                    </div>
+                    <div style={{ color: '#444', marginTop: 2 }}>{c.isbn}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isbnFindStatus === 'error' && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#b00020' }}>
+              ISBN-Suche fehlgeschlagen (siehe Logs).
+            </div>
+          )}
+
           {isbnCoverUrl ? (
             <div style={{ marginTop: 6 }}>
               <img
@@ -840,8 +779,18 @@ export default function App() {
         </label>
 
         <label>
+          Titel (voll)
+          <input value={fullTitle} readOnly placeholder="Wird automatisch gesetzt (ISBN/Enrichment)" />
+        </label>
+
+        <label>
           Autor
-          <input required value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="z. B. T. Fontane" />
+          <input
+            required
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="z. B. T. Fontane"
+          />
         </label>
 
         <label>
@@ -1004,82 +953,6 @@ export default function App() {
         {log.join('\n')}
       </pre>
 
-      {/* --- Analytics section --- */}
-      <details style={{ marginTop: '1.5rem' }}>
-        <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
-          📊 Analytics – Top Authors
-        </summary>
-
-        <div
-          style={{
-            marginTop: '0.75rem',
-            background: '#fafbfc',
-            border: '1px solid #e5e7eb',
-            borderRadius: 10,
-            padding: '1rem',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label>
-              <input type="checkbox" checked={aFinished} onChange={(e) => setAFinished(e.target.checked)} /> finished
-            </label>
-
-            <label>
-              <input type="checkbox" checked={aAbandoned} onChange={(e) => setAAbandoned(e.target.checked)} /> abandoned
-            </label>
-
-            <label>
-              Limit{' '}
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={aLimit}
-                onChange={(e) => setALimit(Number(e.target.value))}
-                style={{ width: 80 }}
-              />
-            </label>
-
-            <button type="button" onClick={loadTopAuthors} disabled={analyticsLoading}>
-              {analyticsLoading ? 'Lade…' : 'Laden'}
-            </button>
-          </div>
-
-          {analyticsError && <div style={{ color: '#b00020', marginTop: 10 }}>Fehler: {analyticsError}</div>}
-
-          {topAuthors.length > 0 && (
-            <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th align="left">Author</th>
-                  <th align="right">Finished</th>
-                  <th align="right">Abandoned</th>
-                  <th align="right">Total</th>
-                  <th align="right">Pages</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topAuthors.map((a) => (
-                  <tr key={a.author}>
-                    <td>{a.author}</td>
-                    <td align="right">{a.finished}</td>
-                    <td align="right">{a.abandoned}</td>
-                    <td align="right">
-                      <b>{a.total}</b>
-                    </td>
-                    <td align="right">{a.pages}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {!analyticsLoading && !analyticsError && topAuthors.length === 0 && (
-            <div style={{ color: '#666', marginTop: 10 }}>Noch keine Daten geladen.</div>
-          )}
-        </div>
-      </details>
-
       {/* --- Sync Issues section --- */}
       <details style={{ marginTop: '1.5rem' }}>
         <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
@@ -1096,216 +969,6 @@ export default function App() {
           }}
         >
           <SyncIssuesPanel />
-        </div>
-      </details>
-
-      {/* --- Search & Update section --- */}
-      <details open={adminOpen} onToggle={(e) => setAdminOpen(e.target.open)} style={{ marginTop: '2rem' }}>
-        <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
-          🔎 Search & Update
-        </summary>
-
-        <div
-          style={{
-            marginTop: '0.75rem',
-            background: '#fafbfc',
-            border: '1px solid #e5e7eb',
-            borderRadius: 10,
-            padding: '1rem',
-          }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '0.5rem',
-              marginBottom: '0.5rem',
-            }}
-          >
-            <label>
-              Autor
-              <input value={sAuthor} onChange={(e) => setSAuthor(e.target.value)} />
-            </label>
-            <label>
-              Verlag
-              <input value={sPublisher} onChange={(e) => setSPublisher(e.target.value)} />
-            </label>
-            <label>
-              Titel (Stichwort)
-              <input value={sTitle} onChange={(e) => setSTitle(e.target.value)} />
-            </label>
-            <label>
-              Barcode
-              <input value={sBarcode} onChange={(e) => setSBarcode(e.target.value)} />
-            </label>
-            <label>
-              Lesestatus
-              <select value={sReadingStatus} onChange={(e) => setSReadingStatus(e.target.value)}>
-                <option value="">-- egal --</option>
-                <option value="in_progress">In Bearbeitung</option>
-                <option value="finished">Fertig gelesen</option>
-                <option value="abandoned">Vorzeitig beendet</option>
-              </select>
-            </label>
-            <label>
-              Top-Buch
-              <select value={sTopBook} onChange={(e) => setSTopBook(e.target.value)}>
-                <option value="">-- egal --</option>
-                <option value="true">nur Top</option>
-                <option value="false">ohne Top</option>
-              </select>
-            </label>
-            <label>
-              Limit
-              <input type="number" min={1} max={200} value={sLimit} onChange={(e) => setSLimit(Number(e.target.value))} />
-            </label>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button type="button" onClick={runSearch} disabled={searchLoading}>
-              {searchLoading ? 'Suche…' : 'Suchen'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSAuthor('');
-                setSPublisher('');
-                setSTitle('');
-                setSBarcode('');
-                setSReadingStatus('');
-                setSTopBook('');
-                setSLimit(20);
-                setResults([]);
-                setSearchError('');
-              }}
-            >
-              Zurücksetzen
-            </button>
-          </div>
-
-          {searchError && <div style={{ color: '#b00020', marginBottom: 8 }}>Fehler: {searchError}</div>}
-
-          {results.length > 0 && (
-            <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{results.length} Ergebnis(se)</div>
-          )}
-
-          {results.length > 0 ? (
-            <div style={{ display: 'grid', gap: '0.5rem' }}>
-              {results.map((row) => (
-                <div
-                  key={row.id}
-                  style={{
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
-                    padding: '0.75rem',
-                    background: '#fff',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-                    <div style={{ fontWeight: 600 }}>
-                      {row.author || '—'} · <span style={{ color: '#666' }}>{row.publisher || '—'}</span>
-                      {row.purchaseUrl ? (
-                        <span style={{ marginLeft: 10, fontWeight: 400, fontSize: 12 }}>
-                          <a href={row.purchaseUrl} target="_blank" rel="noopener noreferrer">
-                            Link
-                          </a>
-                        </span>
-                      ) : null}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#666' }}>ID: {row.id}</div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(6, 1fr)',
-                      gap: '0.5rem',
-                      marginTop: 8,
-                    }}
-                  >
-                    <label>
-                      Seiten
-                      <input
-                        type="number"
-                        min={1}
-                        value={row.pages ?? ''}
-                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, pages: e.target.value }))}
-                      />
-                    </label>
-
-                    <label>
-                      Status
-                      <select
-                        value={row.readingStatus}
-                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, readingStatus: e.target.value }))}
-                      >
-                        <option value="in_progress">In Bearbeitung</option>
-                        <option value="finished">Fertig</option>
-                        <option value="abandoned">Abgebrochen</option>
-                      </select>
-                    </label>
-
-                    <label>
-                      Top-Buch
-                      <input
-                        type="checkbox"
-                        checked={!!row.topBook}
-                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, topBook: e.target.checked }))}
-                      />
-                    </label>
-
-                    <label>
-                      Breite (mm/cm)
-                      <input
-                        value={row.widthRawRow}
-                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, widthRawRow: e.target.value }))}
-                        onBlur={() =>
-                          updateRow(row.id, (r) => ({ ...r, widthMM: parseDimensionToMM(r.widthRawRow) }))
-                        }
-                        placeholder="z. B. 105 mm / 10,5 cm / 10"
-                        inputMode="decimal"
-                      />
-                    </label>
-
-                    <label>
-                      Höhe (mm/cm)
-                      <input
-                        value={row.heightRawRow}
-                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, heightRawRow: e.target.value }))}
-                        onBlur={() =>
-                          updateRow(row.id, (r) => ({ ...r, heightMM: parseDimensionToMM(r.heightRawRow) }))
-                        }
-                        placeholder="z. B. 190 mm / 19 cm / 19"
-                        inputMode="decimal"
-                      />
-                    </label>
-
-                    <label>
-                      Barcodes (kommagetrennt)
-                      <input
-                        value={row.barcodesInput}
-                        onChange={(e) => updateRow(row.id, (r) => ({ ...r, barcodesInput: e.target.value }))}
-                      />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-                    <button type="button" onClick={() => saveRow(row.id)} disabled={row._saving}>
-                      {row._saving ? 'Speichern…' : 'Speichern'}
-                    </button>
-                    <button type="button" onClick={() => revertRow(row.id)} disabled={row._saving}>
-                      Zurücksetzen
-                    </button>
-                    <span style={{ fontSize: 12, color: row._msg.startsWith('Fehler') ? '#b00020' : '#555' }}>
-                      {row._msg}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            !searchLoading && <div style={{ color: '#666' }}>Keine Ergebnisse.</div>
-          )}
         </div>
       </details>
     </div>

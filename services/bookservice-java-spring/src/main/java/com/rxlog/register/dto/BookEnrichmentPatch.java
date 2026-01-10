@@ -10,6 +10,7 @@ public record BookEnrichmentPatch(
         String isbn13,
         String purchaseSource,
         String purchaseUrl,
+        String fullTitle,
 
         @DecimalMin("0.0") @DecimalMax("1.0")
         BigDecimal confidence,

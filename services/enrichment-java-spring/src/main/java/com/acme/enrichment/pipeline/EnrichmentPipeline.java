@@ -2,6 +2,7 @@ package com.acme.enrichment.pipeline;
 
 import com.acme.enrichment.config.PurchaseLinkProperties;
 import com.acme.enrichment.dnb.DnbSruIsbnResolver;
+import com.acme.enrichment.metadata.TitleResolver;
 import com.acme.enrichment.model.BookEnrichmentInput;
 import com.acme.enrichment.model.BookEnrichmentPatch;
 import com.acme.enrichment.text.AbbreviationExpander;
@@ -21,15 +22,18 @@ public class EnrichmentPipeline {
     private final DnbSruIsbnResolver dnb;
     private final AbbreviationExpander abbr;
     private final WikidataFirstPublishYearResolver wikidata;
+    private final TitleResolver titleResolver;
 
     public EnrichmentPipeline(PurchaseLinkProperties purchase,
                               DnbSruIsbnResolver dnb,
                               AbbreviationExpander abbr,
-                              WikidataFirstPublishYearResolver wikidata) {
+                              WikidataFirstPublishYearResolver wikidata,
+                              TitleResolver titleResolver) {
         this.purchase = purchase;
         this.dnb = dnb;
         this.abbr = abbr;
         this.wikidata = wikidata;
+        this.titleResolver = titleResolver;
     }
 
     public BookEnrichmentPatch enrich(BookEnrichmentInput in) {
@@ -50,11 +54,22 @@ public class EnrichmentPipeline {
             fromDnb = (isbn13 != null);
         }
 
+        // --- NEW: resolve full title by ISBN ---
+        String fullTitle = null;
+        if (isbn13 != null) {
+            fullTitle = titleResolver.resolve(isbn13)
+                    .map(TitleResolver.ResolvedTitle::fullTitle)
+                    .orElse(null);
+        }
+
+        // Use fullTitle for building purchase/search links if available
+        String titleForLinks = (fullTitle != null && !fullTitle.isBlank()) ? fullTitle : titleSnippet;
+
         String purchaseUrl = PurchaseLinkBuilder.eurobuchUrl(
                 purchase.eurobuchBaseUrl(),
                 isbn13,
                 author,
-                titleSnippet,
+                titleForLinks,
                 publisher
         );
 
@@ -62,12 +77,15 @@ public class EnrichmentPipeline {
                 (isbn13 == null) ? new BigDecimal("0.60") :
                         (fromDnb ? new BigDecimal("0.85") : new BigDecimal("0.95"));
 
-        Integer firstPublishYear = wikidata.resolve(titleSnippet, author).orElse(null);
+        // Wikidata can work with either the snippet or full title; prefer fullTitle if we have it
+        String titleForWikidata = (fullTitle != null && !fullTitle.isBlank()) ? fullTitle : titleSnippet;
+        Integer firstPublishYear = wikidata.resolve(titleForWikidata, author).orElse(null);
 
         return new BookEnrichmentPatch(
                 isbn13,
                 purchase.provider(),
                 purchaseUrl,
+                fullTitle,          // <--- NEW field
                 confidence,
                 Instant.now(),
                 false,
@@ -77,7 +95,10 @@ public class EnrichmentPipeline {
 
     private static String normalizeIsbn(String s) {
         if (s == null) return null;
-        String digits = s.replaceAll("[^0-9]", "");
-        return digits.isBlank() ? null : digits;
+        String digits = s.replaceAll("[^0-9Xx]", "").toUpperCase();
+        if (digits.isBlank()) return null;
+        // allow ISBN-10 or ISBN-13 input; DNB resolver can still convert if needed
+        if (digits.length() == 10 || digits.length() == 13) return digits;
+        return digits; // keep best-effort; you can also return null here if you want strictness
     }
 }

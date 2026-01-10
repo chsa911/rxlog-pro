@@ -63,7 +63,8 @@ public class BookEnrichmentService {
                       purchase_url,
                       enrichment_confidence,
                       enrichment_resolved_at,
-                      year_first_published
+                      year_first_published,
+                      full_title
                     from books
                     where id = ?::uuid
                     for update
@@ -78,6 +79,7 @@ public class BookEnrichmentService {
         String curIsbn = (String) cur.get("isbn13");
         String curSrc = (String) cur.get("purchase_source");
         String curUrl = (String) cur.get("purchase_url");
+        String curFullTitle = (String) cur.get("full_title");
         Object curConf = cur.get("enrichment_confidence");
         Object curResAt = cur.get("enrichment_resolved_at");
         Object curYearFirstPublished = cur.get("year_first_published");
@@ -96,6 +98,10 @@ public class BookEnrichmentService {
         if (patch.purchaseUrl() != null && (force || curUrl == null)) {
             sets.add("purchase_url = ?");
             args.add(patch.purchaseUrl());
+        }
+        if (patch.fullTitle() != null && (force || curFullTitle == null)) {
+            sets.add("full_title = ?");
+            args.add(patch.fullTitle());
         }
         if (patch.confidence() != null && (force || curConf == null)) {
             sets.add("enrichment_confidence = ?");

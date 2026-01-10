@@ -7,10 +7,9 @@ public record BookEnrichmentPatch(
         String isbn13,
         String purchaseSource,
         String purchaseUrl,
+        String fullTitle,
         BigDecimal confidence,
         Instant resolvedAt,
         boolean force,
-
-        // NEW: will be sent to bookservice
         Integer firstPublishYear
 ) {}
