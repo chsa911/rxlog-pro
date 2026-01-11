@@ -6,8 +6,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,8 +14,6 @@ import org.springframework.util.StringUtils;
 /** JDBC-basierter Zugriff auf Bücher + Barcodes. */
 @Repository
 public class BookDao {
-
-    private static final Logger log = LoggerFactory.getLogger(BookDao.class);
 
     private final JdbcTemplate jdbc;
     private final BarcodeClient barcodeClient;
@@ -36,16 +32,21 @@ public class BookDao {
         r.setReadingStatus(rs.getString("reading_status"));
         Boolean top = (Boolean) rs.getObject("top_book");
         r.setTopBook(top != null ? top : Boolean.FALSE);
+        r.setIsFiction((Boolean) rs.getObject("is_fiction"));
+        r.setGenre(rs.getString("genre"));
+        r.setSubGenre(rs.getString("sub_genre"));
+        r.setThemes(rs.getString("themes"));
         r.setWidth((Integer) rs.getObject("width"));
         r.setHeight((Integer) rs.getObject("height"));
-
         String csv = rs.getString("barcodes_csv");
         if (csv != null && !csv.isBlank()) {
             String[] parts = csv.split(",");
             List<String> list = new ArrayList<>();
             for (String p : parts) {
                 String s = p.trim();
-                if (!s.isEmpty()) list.add(s);
+                if (!s.isEmpty()) {
+                    list.add(s);
+                }
             }
             r.setBarcodes(list);
         } else {
@@ -55,7 +56,7 @@ public class BookDao {
     }
 
     // ------------------------------------------------------------
-    // Search (Admin UI)
+    // Search (for the Admin-UI)
     // ------------------------------------------------------------
     public List<BookSearchResult> search(
             String author,
@@ -64,8 +65,12 @@ public class BookDao {
             String barcode,
             String readingStatus,
             Boolean topBook,
+            Boolean isFiction,
+            boolean onlyUnspecifiedFiction,
+            String genre,
+            String subGenre,
+            String theme,
             int limit) {
-
         StringBuilder sql =
                 new StringBuilder(
                         """
@@ -76,6 +81,10 @@ public class BookDao {
                               b.pages,
                               b.reading_status,
                               b.top_book,
+                              b.is_fiction,
+                              b.genre,
+                              b.sub_genre,
+                              b.themes,
                               b.width,
                               b.height,
                               string_agg(distinct bb.barcode, ',') as barcodes_csv
@@ -95,7 +104,8 @@ public class BookDao {
             args.add("%" + publisher.trim() + "%");
         }
         if (StringUtils.hasText(titleLike)) {
-            where.add("(b.title_keyword ilike ? or b.title_keyword2 ilike ? or b.title_keyword3 ilike ?)");
+            where.add(
+                    "(b.title_keyword ilike ? or b.title_keyword2 ilike ? or b.title_keyword3 ilike ?)");
             String pat = "%" + titleLike.trim() + "%";
             args.add(pat);
             args.add(pat);
@@ -103,14 +113,16 @@ public class BookDao {
         }
         if (StringUtils.hasText(barcode)) {
             String code = BarcodeNormalizer.normalizeOrNull(barcode);
-            if (code == null) return Collections.emptyList();
-            where.add(
-                    """
-                    exists (
-                      select 1 from book_barcodes bb2
-                      where bb2.book_id = b.id and bb2.barcode = ?
-                    )
-                    """);
+            if (code == null) {
+                // barcode filter was requested but invalid -> no match
+                return Collections.emptyList();
+            }
+            where.add("""
+      exists (
+        select 1 from book_barcodes bb2
+        where bb2.book_id = b.id and bb2.barcode = ?
+      )
+      """);
             args.add(code);
         }
         if (StringUtils.hasText(readingStatus)) {
@@ -120,6 +132,28 @@ public class BookDao {
         if (topBook != null) {
             where.add("b.top_book = ?");
             args.add(topBook);
+        }
+
+        if (onlyUnspecifiedFiction) {
+            where.add("b.is_fiction is null");
+        } else if (isFiction != null) {
+            where.add("b.is_fiction = ?");
+            args.add(isFiction);
+        }
+
+        if (StringUtils.hasText(genre)) {
+            where.add("b.genre ilike ?");
+            args.add("%" + genre.trim() + "%");
+        }
+
+        if (StringUtils.hasText(subGenre)) {
+            where.add("b.sub_genre ilike ?");
+            args.add("%" + subGenre.trim() + "%");
+        }
+
+        if (StringUtils.hasText(theme)) {
+            where.add("b.themes ilike ?");
+            args.add("%" + theme.trim() + "%");
         }
 
         if (!where.isEmpty()) {
@@ -138,14 +172,14 @@ public class BookDao {
     }
 
     // ------------------------------------------------------------
-    // Partial-Update (Admin UI)
+    // Partial-Update (Admin-UI)
     // ------------------------------------------------------------
 
     @Transactional
     public boolean partialUpdate(String id, BookUpdateRequest req) {
         List<String> sets = new ArrayList<>();
         List<Object> args = new ArrayList<>();
-        boolean freeBarcode = false;
+        boolean freeBarcodes = false;
 
         if (req.getPages() != null) {
             sets.add("pages = ?");
@@ -158,8 +192,9 @@ public class BookDao {
             sets.add("reading_status_updated_at = now()");
 
             String rs = req.getReadingStatus();
+            // If status becomes finished or abandoned, we will erase all barcodes for this book
             if ("finished".equals(rs) || "abandoned".equals(rs)) {
-                freeBarcode = true;
+                freeBarcodes = true;
             }
         }
 
@@ -181,6 +216,28 @@ public class BookDao {
             args.add(req.getHeight());
         }
 
+        // --- classification fields (optional) ---------------------
+
+        if (req.isIsFictionPresent()) {
+            sets.add("is_fiction = ?");
+            args.add(req.getIsFiction());
+        }
+
+        if (req.isGenrePresent()) {
+            sets.add("genre = ?");
+            args.add(norm(req.getGenre()));
+        }
+
+        if (req.isSubGenrePresent()) {
+            sets.add("sub_genre = ?");
+            args.add(norm(req.getSubGenre()));
+        }
+
+        if (req.isThemesPresent()) {
+            sets.add("themes = ?");
+            args.add(norm(req.getThemes()));
+        }
+
         int updated = 0;
         if (!sets.isEmpty()) {
             String sql = "update books set " + String.join(", ", sets) + " where id = ?::uuid";
@@ -190,66 +247,45 @@ public class BookDao {
 
         // --- Barcode handling ------------------------------------
 
-        // If readingStatus finished/abandoned: write barcodes_history + free barcode (delete from book_barcodes)
-        if (freeBarcode) {
-            // usedTo must be reading_status_updated_at (which is set to now() above)
-            Timestamp ts =
-                    this.jdbc.queryForObject(
-                            "select reading_status_updated_at from books where id = ?::uuid",
-                            Timestamp.class,
+        if (freeBarcodes) {
+            // 1) Load all barcodes currently attached to this book
+            List<String> codes =
+                    this.jdbc.query(
+                            "select barcode from book_barcodes where book_id = ?::uuid",
+                            (rs, i) -> rs.getString(1),
                             id);
-            Instant usedTo = ts != null ? ts.toInstant() : Instant.now();
 
-            String reason = req.getReadingStatus();
-            releaseBarcodeToHistoryAndDelete(id, usedTo, reason);
+            // 2) Tell the barcode service to release them (update in-memory used set)
+            for (String code : codes) {
+                barcodeClient.release(code);
+            }
+
+            // 3) Delete them from DB so they are not considered used on restart
+            this.jdbc.update("delete from book_barcodes where book_id = ?::uuid", id);
             ++updated;
 
         } else if (req.getBarcodes() != null) {
-            // Rule: one book has one barcode, and barcode should not be changed.
+            // Replace barcodes if explicitly provided in the request
+            this.jdbc.update("delete from book_barcodes where book_id = ?::uuid", id);
+
             LinkedHashSet<String> uniq = new LinkedHashSet<>();
             for (String b : req.getBarcodes()) {
                 if (b != null) {
                     String norm = BarcodeNormalizer.normalizeOrNull(b);
-                    if (norm != null) uniq.add(norm);
-                    else throw new IllegalArgumentException("Invalid barcode: " + b);
+                    if (norm != null) {
+                        uniq.add(norm);
+                    } else {
+                        throw new IllegalArgumentException("Invalid barcode: " + b);
+                    }
                 }
             }
-            if (uniq.isEmpty()) return updated > 0;
 
-            if (uniq.size() > 1) {
-                throw new IllegalArgumentException("Only one barcode per book is allowed.");
-            }
-
-            String newCode = uniq.iterator().next();
-
-            String existing =
-                    this.jdbc.query(
-                            "select barcode from book_barcodes where book_id = ?::uuid limit 1",
-                            (rs) -> rs.next() ? rs.getString(1) : null,
-                            id);
-
-            if (existing != null && !existing.isBlank() && !existing.equals(newCode)) {
-                throw new IllegalArgumentException(
-                        "Barcode cannot be changed (existing=" + existing + ", requested=" + newCode + ")");
-            }
-
-            if (existing == null || existing.isBlank()) {
-                // usedFrom should be registered_at
-                Timestamp regTs =
-                        this.jdbc.queryForObject(
-                                "select registered_at from books where id = ?::uuid",
-                                Timestamp.class,
-                                id);
-                Instant usedFrom = regTs != null ? regTs.toInstant() : Instant.now();
-
+            for (String code : uniq) {
                 this.jdbc.update(
-                        "insert into book_barcodes (book_id, barcode) values (?::uuid, ?)",
-                        id,
-                        newCode);
-
-                safeUsageAssign(newCode, id, usedFrom);
-                ++updated;
+                        "insert into book_barcodes (book_id, barcode) values (?::uuid, ?)", id, code);
             }
+
+            ++updated;
         }
 
         return updated > 0;
@@ -259,8 +295,6 @@ public class BookDao {
     // Insert for Registration
     // ------------------------------------------------------------
 
-    private record InsertResult(String id, Instant registeredAt) {}
-
     /** Creates a new book + its barcode and returns the generated ID */
     @Transactional
     public String insert(RegisterBookRequest req) {
@@ -268,63 +302,68 @@ public class BookDao {
 
         String sql =
                 """
-                insert into books (
-                    author,
-                    publisher,
-                    pages,
-                    title_keyword,
-                    title_keyword_position,
-                    title_keyword2,
-                    title_keyword2_position,
-                    title_keyword3,
-                    title_keyword3_position,
-                    width,
-                    height,
-                    reading_status,
-                    top_book,
-                    registered_at,
-                    reading_status_updated_at
-                )
-                values (
-                    ?, ?, ?,
-                    ?, ?,
-                    ?, ?,
-                    ?, ?,
-                    ?, ?,
-                    ?, ?,
-                    now(),
-                    now()
-                )
-                returning id::text, registered_at
-                """;
+                        insert into books (
+                            author,
+                            publisher,
+                            pages,
+                            title_keyword,
+                            title_keyword_position,
+                            title_keyword2,
+                            title_keyword2_position,
+                            title_keyword3,
+                            title_keyword3_position,
+                            width,
+                            height,
+                            reading_status,
+                            top_book,
+                            is_fiction,
+                            genre,
+                            sub_genre,
+                            themes,
+                            registered_at,
+                            reading_status_updated_at
+                        )
+                        values (
+                            ?, ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?, ?, ?,
+                            now(),
+                            now()
+                        )
+                        returning id::text
+                        """;
 
-        InsertResult res =
+        String id =
                 jdbc.queryForObject(
                         sql,
-                        (rs, i) ->
-                                new InsertResult(
-                                        rs.getString(1),
-                                        rs.getTimestamp(2).toInstant()),
-                        req.author(),
-                        req.publisher(),
-                        req.pages(),
-                        req.titleKeyword(),
-                        req.titleKeywordPosition(),
-                        req.titleKeyword2(),
-                        req.titleKeyword2Position(),
-                        req.titleKeyword3(),
-                        req.titleKeyword3Position(),
-                        req.width(),
-                        req.height(),
-                        req.readingStatus(),
-                        top);
+                        new Object[] {
+                                req.author(),
+                                req.publisher(),
+                                req.pages(),
+                                req.titleKeyword(),
+                                req.titleKeywordPosition(),
+                                req.titleKeyword2(),
+                                req.titleKeyword2Position(),
+                                req.titleKeyword3(),
+                                req.titleKeyword3Position(),
+                                req.width(),
+                                req.height(),
+                                req.readingStatus(),
+                                top,
+                                req.isFiction(),
+                                norm(req.genre()),
+                                norm(req.subGenre()),
+                                norm(req.themes())
+                        },
+                        String.class);
 
-        if (res == null || res.id() == null) {
+        if (id == null) {
             throw new IllegalStateException("Insert returned null id");
         }
-
-        String id = res.id();
-        Instant registeredAt = res.registeredAt();
 
         if (req.barcode() != null && !req.barcode().isBlank()) {
             String code = BarcodeNormalizer.normalizeOrThrow(req.barcode());
@@ -332,30 +371,31 @@ public class BookDao {
                     "insert into book_barcodes (book_id, barcode) values (?::uuid, ?)",
                     id,
                     code);
-
-            // usedFrom must be registered_at (best-effort: do not fail registration on usage logging)
-            safeUsageAssign(code, id, registeredAt);
         }
-
-        // employerfriendly: enrichment scheduling must NOT break registration
-        try {
-            jdbc.update(
-                    """
-                    insert into book_enrichment_job (book_id, status, attempts, next_run_at, updated_at, last_error)
-                    values (?::uuid, 'queued', 0, now(), now(), null)
-                    on conflict (book_id) do update
-                      set status      = 'queued',
-                          attempts    = 0,
-                          next_run_at = now(),
-                          updated_at  = now(),
-                          last_error  = null
-                     """,
-                    id);
-        } catch (Exception e) {
-            log.warn("Could not schedule enrichment job for book {} (ignored): {}", id, e.getMessage());
-        }
+        // ------------------------------------------------------------
+        // Enqueue enrichment job (ISBN lookup + purchase link) for worker
+        // Requires: book_enrichment_job(book_id uuid UNIQUE, ...)
+        // ------------------------------------------------------------
+        jdbc.update(
+                """
+                insert into book_enrichment_job (book_id, status, attempts, next_run_at, updated_at, last_error)
+                values (?::uuid, 'queued', 0, now(), now(), null)
+                on conflict (book_id) do update
+                  set status      = 'queued',
+                      attempts    = 0,
+                      next_run_at = now(),
+                      updated_at  = now(),
+                      last_error  = null
+                 """,
+                id);
 
         return id;
+    }
+
+    private static String norm(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 
     // ------------------------------------------------------------
@@ -364,7 +404,7 @@ public class BookDao {
 
     /**
      * Update reading_status using a MOBILE timestamp (not now()).
-     * If status becomes finished/abandoned: release barcode + write barcodes_history + delete from book_barcodes.
+     * If status becomes finished/abandoned, free barcodes (same behavior as admin partialUpdate).
      */
     @Transactional
     public void applyReadingStatusWithTimestamp(String id, String readingStatus, Instant changedAt) {
@@ -372,119 +412,24 @@ public class BookDao {
                 "update books set reading_status = ?, reading_status_updated_at = ? where id = ?::uuid",
                 readingStatus,
                 Timestamp.from(changedAt),
-                id
-        );
+                id);
 
         if ("finished".equals(readingStatus) || "abandoned".equals(readingStatus)) {
-            releaseBarcodeToHistoryAndDelete(id, changedAt, readingStatus);
-        }
-    }
+            // 1) Load all barcodes currently attached to this book
+            List<String> codes =
+                    this.jdbc.query(
+                            "select barcode from book_barcodes where book_id = ?::uuid",
+                            (rs, i) -> rs.getString(1),
+                            id);
 
-    /**
-     * Writes one (or more legacy) barcodes to barcodes_history and deletes them from book_barcodes
-     * (so the barcode becomes reusable).
-     *
-     * Order requirement: barcodes_history.created_at must be chronological:
-     * - mobile: use readingStatusChangedAt
-     * - admin: use reading_status_updated_at (now())
-     */
-    private void releaseBarcodeToHistoryAndDelete(String bookId, Instant releaseAt, String reason) {
-        List<String> codes =
-                this.jdbc.query(
-                        "select barcode from book_barcodes where book_id = ?::uuid",
-                        (rs, i) -> rs.getString(1),
-                        bookId);
-
-        if (codes.isEmpty()) return;
-
-        for (String code : codes) {
-            if (code == null || code.isBlank()) continue;
-
-            safeUsageRelease(code, bookId, releaseAt, reason);
-            safeRelease(code);
-
-            // employerfriendly history: only (book_id, barcode, created_at) needed; book data via join on book_id
-            jdbc.update(
-                    "insert into barcodes_history (book_id, barcode, freed_at) values (?::uuid, ?, ?)",
-                    bookId,
-                    code,
-                    Timestamp.from(releaseAt)
-            );
-        }
-
-        // delete active barcode(s) so they can be reused
-        this.jdbc.update("delete from book_barcodes where book_id = ?::uuid", bookId);
-    }
-
-    private void safeUsageAssign(String barcode, String bookId, Instant usedFrom) {
-        try {
-            barcodeClient.usageAssign(barcode, bookId, usedFrom);
-        } catch (Exception e) {
-            log.warn("usageAssign failed for barcode={} bookId={} (ignored): {}", barcode, bookId, e.getMessage());
-        }
-    }
-
-    private void safeUsageRelease(String barcode, String bookId, Instant usedTo, String reason) {
-        try {
-            barcodeClient.usageRelease(barcode, bookId, usedTo, reason);
-        } catch (Exception e) {
-            log.warn("usageRelease failed for barcode={} bookId={} (ignored): {}", barcode, bookId, e.getMessage());
-        }
-    }
-
-    private void safeRelease(String barcode) {
-        try {
-            barcodeClient.release(barcode);
-        } catch (Exception e) {
-            log.warn("barcode release failed for barcode={} (ignored): {}", barcode, e.getMessage());
-        }
-    }
-
-    // ------------------------------------------------------------
-    // Analytics
-    // ------------------------------------------------------------
-    public java.util.List<TopAuthorStat> topAuthors(java.util.List<String> statuses, int limit) {
-
-        StringBuilder sql = new StringBuilder("""
-        select
-          coalesce(nullif(btrim(author), ''), '(unknown)') as author,
-          sum(case when reading_status = 'finished' then 1 else 0 end)::bigint as finished,
-          sum(case when reading_status = 'abandoned' then 1 else 0 end)::bigint as abandoned,
-          count(*)::bigint as total,
-          coalesce(sum(pages), 0)::bigint as pages
-        from books
-        """);
-
-        java.util.List<Object> args = new java.util.ArrayList<>();
-
-        if (statuses != null && !statuses.isEmpty()) {
-            sql.append(" where reading_status in (");
-            for (int i = 0; i < statuses.size(); i++) {
-                if (i > 0) sql.append(", ");
-                sql.append("?");
-                args.add(statuses.get(i));
+            // 2) Tell the barcode service to release them (update in-memory used set)
+            for (String code : codes) {
+                barcodeClient.release(code);
             }
-            sql.append(") ");
+
+            // 3) Delete them from DB so they are not considered used on restart
+            this.jdbc.update("delete from book_barcodes where book_id = ?::uuid", id);
         }
-
-        sql.append("""
-        group by 1
-        order by total desc, finished desc, pages desc, author asc
-        limit ?
-        """);
-        args.add(limit);
-
-        return this.jdbc.query(
-                sql.toString(),
-                args.toArray(),
-                (rs, i) -> new TopAuthorStat(
-                        rs.getString("author"),
-                        rs.getLong("finished"),
-                        rs.getLong("abandoned"),
-                        rs.getLong("total"),
-                        rs.getLong("pages")
-                )
-        );
     }
 
     /**
