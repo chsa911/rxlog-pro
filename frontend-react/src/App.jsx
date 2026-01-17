@@ -190,7 +190,7 @@ export default function App() {
   const [publisher, setPublisher] = useState('');
   const [pages, setPages] = useState('');
 
-  // full title field
+  // full title field (manual, can be filled by ISBN but not overwritten)
   const [fullTitle, setFullTitle] = useState('');
 
   // ISBN lookup
@@ -204,7 +204,7 @@ export default function App() {
   const [amazonUrl, setAmazonUrl] = useState('');
   const lastIsbnLookupRef = useRef('');
 
-  // --- NEW: Reverse ISBN lookup (author/title/publisher -> ISBN candidates)
+  // Reverse ISBN lookup (author/title/publisher -> ISBN candidates)
   const [isbnFindStatus, setIsbnFindStatus] = useState(''); // '', 'loading', 'error'
   const [isbnCandidates, setIsbnCandidates] = useState([]); // [{ isbn, title, authors, publisher }]
 
@@ -233,6 +233,15 @@ export default function App() {
   const [readingStatus, setReadingStatus] = useState('in_progress');
   const [topBook, setTopBook] = useState(false);
 
+  // optional classification (can be NULL on backend)
+  // ''    = not specified
+  // true  = Fiction
+  // false = Non-Fiction
+  const [isFiction, setIsFiction] = useState(''); // '', 'true', 'false'
+  const [genre, setGenre] = useState('');
+  const [subGenre, setSubGenre] = useState('');
+  const [themes, setThemes] = useState('');
+
   const [log, setLog] = useState([]);
 
   function handleWidthBlur() {
@@ -241,74 +250,76 @@ export default function App() {
   function handleHeightBlur() {
     setHeightMM(parseDimensionToMM(heightRaw));
   }
-// ---------------------------
-// Find ISBN candidates from author/title/publisher (Google Books)// GET /api/register/isbn/search?author=...&title=...&publisher=...&limit=8
-// ---------------------------
-async function findIsbnCandidates() {
-  const titleQ = [titleKeyword, titleKeyword2, titleKeyword3].filter(Boolean).join(' ').trim();
-  const a = (author || '').trim();
-  const p = (publisher || '').trim();
 
-  if (!titleQ && !a && !p) {
-    setLog((l) => ['ISBN-Suche: Bitte Autor/Verlag/Titel-Stichwort(e) eingeben.', ...l]);
-    return;
-  }
+  // ---------------------------
+  // Find ISBN candidates from author/title/publisher (Google Books)
+  // ---------------------------
+  async function findIsbnCandidates() {
+    const titleQ = [titleKeyword, titleKeyword2, titleKeyword3].filter(Boolean).join(' ').trim();
+    const a = (author || '').trim();
+    const p = (publisher || '').trim();
 
-  setIsbnFindStatus('loading');
-  setIsbnCandidates([]);
-
-  try {
-    const parts = [];
-    if (a) parts.push(`inauthor:${a}`);
-    if (p) parts.push(`inpublisher:${p}`);
-    if (titleQ) parts.push(`intitle:${titleQ}`);
-
-    const q = encodeURIComponent(parts.join(' '));
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=8`;
-
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Google Books ${res.status}`);
-
-    const j = await res.json();
-    const items = Array.isArray(j?.items) ? j.items : [];
-
-    const seen = new Set();
-    const cands = items
-      .map((it) => {
-        const v = it?.volumeInfo;
-        if (!v) return null;
-
-        const ids = Array.isArray(v.industryIdentifiers) ? v.industryIdentifiers : [];
-        const isbn13 = ids.find((x) => x.type === 'ISBN_13')?.identifier;
-        const isbn10 = ids.find((x) => x.type === 'ISBN_10')?.identifier;
-        const raw = isbn13 || isbn10;
-        if (!raw) return null;
-
-        const clean = normalizeIsbn(raw);
-        if (!clean || seen.has(clean)) return null;
-        seen.add(clean);
-
-        return {
-          isbn: clean,
-          title: v.title || '',
-          authors: Array.isArray(v.authors) ? v.authors.join(', ') : '',
-          publisher: v.publisher || '',
-        };
-      })
-      .filter(Boolean);
-
-    setIsbnCandidates(cands);
-    setIsbnFindStatus('');
-
-    if (cands.length === 0) {
-      setLog((l) => ['ISBN-Suche (Google): Keine Treffer.', ...l]);
+    if (!titleQ && !a && !p) {
+      setLog((l) => ['ISBN-Suche: Bitte Autor/Verlag/Titel-Stichwort(e) eingeben.', ...l]);
+      return;
     }
-  } catch (e) {
-    setIsbnFindStatus('error');
-    setLog((l) => [`ISBN-Suche (Google) Fehler: ${e?.message || String(e)}`, ...l]);
+
+    setIsbnFindStatus('loading');
+    setIsbnCandidates([]);
+
+    try {
+      const parts = [];
+      if (a) parts.push(`inauthor:${a}`);
+      if (p) parts.push(`inpublisher:${p}`);
+      if (titleQ) parts.push(`intitle:${titleQ}`);
+
+      const q = encodeURIComponent(parts.join(' '));
+      const url = `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=8`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Google Books ${res.status}`);
+
+      const j = await res.json();
+      const items = Array.isArray(j?.items) ? j.items : [];
+
+      const seen = new Set();
+      const cands = items
+        .map((it) => {
+          const v = it?.volumeInfo;
+          if (!v) return null;
+
+          const ids = Array.isArray(v.industryIdentifiers) ? v.industryIdentifiers : [];
+          const isbn13 = ids.find((x) => x.type === 'ISBN_13')?.identifier;
+          const isbn10 = ids.find((x) => x.type === 'ISBN_10')?.identifier;
+          const raw = isbn13 || isbn10;
+          if (!raw) return null;
+
+          const clean = normalizeIsbn(raw);
+          if (!clean || seen.has(clean)) return null;
+          seen.add(clean);
+
+          return {
+            isbn: clean,
+            title: v.title || '',
+            authors: Array.isArray(v.authors) ? v.authors.join(', ') : '',
+            publisher: v.publisher || '',
+          };
+        })
+        .filter(Boolean);
+
+      setIsbnCandidates(cands);
+      setIsbnFindStatus('');
+
+      if (cands.length === 0) {
+        setLog((l) => ['ISBN-Suche (Google): Keine Treffer.', ...l]);
+      }
+    } catch (e) {
+      setIsbnFindStatus('error');
+      setLog((l) => [`ISBN-Suche (Google) Fehler: ${e?.message || String(e)}`, ...l]);
+    }
   }
-}
-// ---------------------------
+
+  // ---------------------------
   // ISBN effect (debounced)  ISBN -> metadata
   // ---------------------------
   useEffect(() => {
@@ -324,7 +335,6 @@ async function findIsbnCandidates() {
       setInfoUrl('');
       setBuyUrl('');
       setAmazonUrl('');
-      setFullTitle('');
       lastIsbnLookupRef.current = '';
       return;
     }
@@ -337,7 +347,6 @@ async function findIsbnCandidates() {
       setInfoUrl('');
       setBuyUrl('');
       setAmazonUrl('');
-      setFullTitle('');
       return;
     }
 
@@ -360,7 +369,6 @@ async function findIsbnCandidates() {
           setInfoUrl('');
           setBuyUrl('');
           setAmazonUrl(`https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
-          setFullTitle('');
           return;
         }
 
@@ -372,9 +380,8 @@ async function findIsbnCandidates() {
         setBuyUrl(meta.buyUrl || '');
         setAmazonUrl(meta.amazonUrl || `https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
 
-        setFullTitle(meta.title || '');
-
         // Fill only if empty (do not overwrite user input)
+        if (!fullTitle && meta.title) setFullTitle(meta.title);
         if (!author && meta.authors?.length) setAuthor(meta.authors.join(', '));
         if (!publisher && meta.publisher) setPublisher(meta.publisher);
         if (!pages && meta.pages) setPages(String(meta.pages));
@@ -401,7 +408,6 @@ async function findIsbnCandidates() {
         setInfoUrl('');
         setBuyUrl('');
         setAmazonUrl(`https://www.amazon.de/s?k=${encodeURIComponent(clean)}`);
-        setFullTitle('');
       }
     }, 500);
 
@@ -414,6 +420,7 @@ async function findIsbnCandidates() {
     author,
     publisher,
     pages,
+    fullTitle,
     titleKeyword,
     titleKeywordPosition,
     titleKeyword2,
@@ -513,10 +520,11 @@ async function findIsbnCandidates() {
     return () => {
       cancelled = true;
     };
-  }, [widthMM, heightMM]);
+  }, [widthMM, heightMM]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSubmit(e) {
     e.preventDefault();
+
     if (!barcode) {
       alert('Bitte zuerst Barcode ermitteln.');
       return;
@@ -545,12 +553,21 @@ async function findIsbnCandidates() {
       readingStatus,
       topBook,
 
+      // optional classification
+      isFiction: isFiction === '' ? null : isFiction === 'true',
+      genre: (genre || '').trim() || null,
+      subGenre: (subGenre || '').trim() || null,
+      themes: (themes || '').trim() || null,
+
       width: widthMM,
       height: heightMM,
     };
 
     const payloadWithLinks = {
       ...basePayload,
+      // include manual full title if backend supports it
+      titleFull: (fullTitle || '').trim() || null,
+
       isbn13: cleanIsbn || null,
       purchaseSource: buyUrl
         ? 'google_books_buy'
@@ -571,15 +588,49 @@ async function findIsbnCandidates() {
     }
 
     try {
+      // 1) newest backend: supports ISBN/link fields + optional classification (+ titleFull if you added it)
       let res = await postRegister(payloadWithLinks);
 
+      // 2) older backend: supports classification but not ISBN/link (and likely not titleFull)
       if (!res.ok && res.status === 400) {
         res = await postRegister(basePayload);
         if (res.ok) {
-          setLog((l) => ['Hinweis: ISBN/Link nicht gespeichert (Backend noch ohne Felder).', ...l]);
+          setLog((l) => ['Hinweis: ISBN/Links nicht gespeichert (Backend noch ohne Felder).', ...l]);
         }
       }
 
+      // 3) very old backend: supports neither ISBN/link nor classification fields
+      if (!res.ok && res.status === 400) {
+        const legacyPayload = {
+          author,
+          publisher,
+          pages: pages ? Number(pages) : null,
+
+          titleKeyword: titleKeyword || null,
+          titleKeywordPosition: titleKeywordPosition ? Number(titleKeywordPosition) : null,
+          titleKeyword2: titleKeyword2 || null,
+          titleKeyword2Position: titleKeyword2Position ? Number(titleKeyword2Position) : null,
+          titleKeyword3: titleKeyword3 || null,
+          titleKeyword3Position: titleKeyword3Position ? Number(titleKeyword3Position) : null,
+
+          barcode,
+          readingStatus,
+          topBook,
+
+          width: widthMM,
+          height: heightMM,
+        };
+
+        res = await postRegister(legacyPayload);
+        if (res.ok) {
+          setLog((l) => [
+            'Hinweis: ISBN/Links & Klassifikation nicht gespeichert (Backend noch ohne Felder).',
+            ...l,
+          ]);
+        }
+      }
+
+      // ✅ IMPORTANT: this was broken before (caused "Expected finally but found const")
       if (!res.ok) {
         await releaseCurrentBarcode('Registrierung fehlgeschlagen');
         throw new Error('Registrierung fehlgeschlagen: ' + res.status);
@@ -619,15 +670,22 @@ async function findIsbnCandidates() {
     setTitleKeyword2Position('');
     setTitleKeyword3('');
     setTitleKeyword3Position('');
+
     setWidthRaw('');
     setHeightRaw('');
     setWidthMM(null);
     setHeightMM(null);
+
     setBarcode('');
     setColor('');
     setPosition('');
     setReadingStatus('in_progress');
     setTopBook(false);
+
+    setIsFiction('');
+    setGenre('');
+    setSubGenre('');
+    setThemes('');
   }
 
   // Tooltip text
@@ -734,7 +792,7 @@ async function findIsbnCandidates() {
                     key={c.isbn}
                     type="button"
                     onClick={() => {
-                      setIsbn(c.isbn);       // triggers ISBN->metadata effect
+                      setIsbn(c.isbn); // triggers ISBN->metadata effect
                       setIsbnCandidates([]);
                       setIsbnFindStatus('');
                       setLog((l) => [`ISBN übernommen: ${c.isbn} (${c.title || '—'})`, ...l]);
@@ -780,7 +838,11 @@ async function findIsbnCandidates() {
 
         <label>
           Titel (voll)
-          <input value={fullTitle} readOnly placeholder="Wird automatisch gesetzt (ISBN/Enrichment)" />
+          <input
+            value={fullTitle}
+            onChange={(e) => setFullTitle(e.target.value)}
+            placeholder="Manuell erfassen (wird von ISBN nur gefüllt, wenn leer)"
+          />
         </label>
 
         <label>
@@ -926,6 +988,44 @@ async function findIsbnCandidates() {
           </label>
         </fieldset>
 
+        <fieldset style={{ marginTop: '0.5rem' }}>
+          <legend>Klassifikation (optional)</legend>
+
+          <label style={{ display: 'block', marginTop: 6 }}>
+            Typ{' '}
+            <select value={isFiction} onChange={(e) => setIsFiction(e.target.value)}>
+              <option value="">Keine Angabe</option>
+              <option value="true">Fiction</option>
+              <option value="false">Non-Fiction</option>
+            </select>
+          </label>
+
+          <label style={{ display: 'block', marginTop: 6 }}>
+            Genre
+            <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="z. B. Krimi" autoComplete="off" />
+          </label>
+
+          <label style={{ display: 'block', marginTop: 6 }}>
+            Untergenre
+            <input
+              value={subGenre}
+              onChange={(e) => setSubGenre(e.target.value)}
+              placeholder="z. B. Thriller"
+              autoComplete="off"
+            />
+          </label>
+
+          <label style={{ display: 'block', marginTop: 6 }}>
+            Themen
+            <input
+              value={themes}
+              onChange={(e) => setThemes(e.target.value)}
+              placeholder="z. B. Bergsteigen, Alpen"
+              autoComplete="off"
+            />
+          </label>
+        </fieldset>
+
         <label>
           <input type="checkbox" checked={topBook} onChange={(e) => setTopBook(e.target.checked)} /> Top-Buch
         </label>
@@ -955,9 +1055,7 @@ async function findIsbnCandidates() {
 
       {/* --- Sync Issues section --- */}
       <details style={{ marginTop: '1.5rem' }}>
-        <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
-          ⚠️ Sync Issues
-        </summary>
+        <summary style={{ fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>⚠️ Sync Issues</summary>
 
         <div
           style={{

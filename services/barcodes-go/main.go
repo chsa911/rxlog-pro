@@ -195,11 +195,12 @@ func main() {
 	http.HandleFunc("/api/barcodes/release", releaseHandler)
 	http.HandleFunc("/barcodes/release", releaseHandler)
 
+	// UPDATED: verify now uses mm ints for rule/prefix selection (matches barcode_engine.go refactor)
 	http.HandleFunc("/api/barcodes/verify", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Code   string `json:"code"`
-			Width  int    `json:"width"`
-			Height int    `json:"height"`
+			Width  int    `json:"width"`  // mm
+			Height int    `json:"height"` // mm
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || strings.TrimSpace(in.Code) == "" {
 			http.Error(w, "bad json", http.StatusBadRequest)
@@ -211,10 +212,13 @@ func main() {
 		}
 
 		code := strings.TrimSpace(in.Code)
-		wCm := float64(in.Width) / 10.0
-		hCm := float64(in.Height) / 10.0
+		widthMm := in.Width
+		heightMm := in.Height
+		wCm := float64(widthMm) / 10.0
+		hCm := float64(heightMm) / 10.0
 
-		rule, err := pickRule(barcodeSystem.rules, wCm)
+		// pickRule now expects width in mm (int)
+		rule, err := pickRule(barcodeSystem.rules, widthMm)
 		if err != nil {
 			http.Error(w, "size rule not found", http.StatusNotFound)
 			return
@@ -226,17 +230,18 @@ func main() {
 		matchedPos := ""
 		for i := range rule.Variants {
 			v := &rule.Variants[i]
-			p, ppos := choosePrefixAndPosition(rule, v, hCm)
+			// choosePrefixAndPosition now expects height in mm (int)
+			p, ppos := choosePrefixAndPosition(rule, v, heightMm)
 			p = strings.ToLower(strings.TrimSpace(p))
 			if p == "" {
 				continue
 			}
 			expectedPrefixes = append(expectedPrefixes, p)
-			// matchedColor is filled later once we know actualPrefix.
 			if matchedPos == "" {
 				matchedPos = ppos
 			}
 		}
+
 		// Fallback: keep previous behavior (first variant) if no variant prefixes exist.
 		expectedPrefix := ""
 		pos := matchedPos
@@ -261,7 +266,7 @@ func main() {
 		match := false
 		for i := range rule.Variants {
 			v := &rule.Variants[i]
-			p, _ := choosePrefixAndPosition(rule, v, hCm)
+			p, _ := choosePrefixAndPosition(rule, v, heightMm)
 			p = strings.ToLower(strings.TrimSpace(p))
 			if p != "" && p == actualPrefix {
 				match = true

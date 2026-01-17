@@ -21,6 +21,12 @@ spring:
           uri: ${BARCODES_URL:http://localhost:8087}
           predicates:
             - Path=/api/barcodes/**
+        - id: public
+          uri: ${REGISTER_URL:http://bookservice-java-spring:8086}
+          predicates:
+            - Path=/api/public/**
+            - lsof -i :8080
+
 management:
   endpoints:
     web:

@@ -4,6 +4,17 @@ services:
     ports:
       - "6379:6379"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.0
+    command: ["start-dev"]
+    ports:
+      - "8081:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # optional but can help locally in some setups:
+      # KC_HOSTNAME_STRICT: "false"
+
   gateway-java-spring:
     build:
       context: ./gateway-java-spring
@@ -15,9 +26,12 @@ services:
       - BARCODES_URL=http://barcodes-go:8082
       - JAVA_TOOL_OPTIONS=-Dserver.ssl.enabled=false
       - SPRING_APPLICATION_JSON={"server":{"ssl":{"enabled":false}}}
+      # Keycloak JWT validation (inside docker network use service name "keycloak"):
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8080/realms/rxlog
     depends_on:
       - bookservice-java-spring
       - barcodes-go
+      - keycloak
 
   bookservice-java-spring:
     build:
@@ -31,8 +45,11 @@ services:
       - SERVER_PORT=8086
       - barcode.service.base=http://barcodes-go:8082
       - SPRING_FLYWAY_ENABLED=false
+      # Keycloak JWT validation (inside docker network use service name "keycloak"):
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8080/realms/rxlog
     depends_on:
       - redis
+      - keycloak
 
   enrichment-java-spring:
     build:
@@ -45,6 +62,7 @@ services:
       - SPRING_APPLICATION_JSON={"spring":{"flyway":{"enabled":false}},"bookservice":{"baseUrl":"http://bookservice-java-spring:8086"},"worker":{"enabled":true,"batchSize":100,"pollDelayMs":200}}
     depends_on:
       - bookservice-java-spring
+      - keycloak
 
   barcodes-go:
     build:
@@ -61,3 +79,15 @@ services:
       - ./config:/config
     ports:
       - "8082:8082"
+
+  nginx:
+    image: nginx:stable
+    platform: linux/arm64
+    ports:
+      - "8089:80"
+    volumes:
+      - ./frontend-public/deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./site:/var/www/html:ro
+    depends_on:
+          - gateway-java-spring
+

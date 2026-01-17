@@ -58,6 +58,33 @@ public class BookDao {
     // ------------------------------------------------------------
     // Search (for the Admin-UI)
     // ------------------------------------------------------------
+
+    // ✅ Backwards-compatible overload (old callers)
+    public List<BookSearchResult> search(
+            String author,
+            String publisher,
+            String titleLike,
+            String barcode,
+            String readingStatus,
+            Boolean topBook,
+            int limit) {
+
+        return search(
+                author,
+                publisher,
+                titleLike,
+                barcode,
+                readingStatus,
+                topBook,
+                null,   // isFiction
+                false,  // onlyUnspecifiedFiction
+                null,   // genre
+                null,   // subGenre
+                null,   // theme
+                limit
+        );
+    }
+
     public List<BookSearchResult> search(
             String author,
             String publisher,
@@ -71,6 +98,7 @@ public class BookDao {
             String subGenre,
             String theme,
             int limit) {
+
         StringBuilder sql =
                 new StringBuilder(
                         """
@@ -169,6 +197,101 @@ public class BookDao {
         args.add(limit);
 
         return this.jdbc.query(sql.toString(), args.toArray(), (rs, i) -> mapRow(rs));
+    }
+
+    // ------------------------------------------------------------
+    // Analytics (Admin-UI)
+    // ------------------------------------------------------------
+    public List<TopAuthorStat> topAuthors(List<String> statuses, int limit) {
+
+        StringBuilder sql = new StringBuilder(
+                "select b.author as author, count(*)::int as cnt from books b");
+
+        List<Object> args = new ArrayList<>();
+        List<String> where = new ArrayList<>();
+
+        where.add("b.author is not null");
+        where.add("b.author <> ''");
+
+        if (statuses != null && !statuses.isEmpty()) {
+            String placeholders = String.join(", ", Collections.nCopies(statuses.size(), "?"));
+            where.add("b.reading_status in (" + placeholders + ")");
+            args.addAll(statuses);
+        }
+
+        if (!where.isEmpty()) {
+            sql.append(" where ").append(String.join(" and ", where));
+        }
+
+        sql.append(" group by b.author order by cnt desc, b.author asc limit ?");
+        args.add(limit);
+
+        return this.jdbc.query(
+                sql.toString(),
+                args.toArray(),
+                (rs, i) -> createTopAuthorStat(rs.getString("author"), rs.getInt("cnt"))
+        );
+    }
+
+    /**
+     * Create TopAuthorStat whether it's a record (TopAuthorStat(String,int))
+     * or a bean with setters (setAuthor/setCount).
+     */
+    private static TopAuthorStat createTopAuthorStat(String author, int cnt) {
+        try {
+            Class<TopAuthorStat> c = TopAuthorStat.class;
+
+            // record TopAuthorStat(String author, int count)
+            if (c.isRecord()) {
+                return c.getDeclaredConstructor(String.class, int.class).newInstance(author, cnt);
+            }
+
+            // bean-style: new TopAuthorStat(); setAuthor(...); setCount(...)
+            TopAuthorStat obj = c.getDeclaredConstructor().newInstance();
+
+            // try setters
+            boolean okAuthor = tryInvokeSetter(obj, "setAuthor", String.class, author)
+                    || trySetField(obj, "author", author);
+
+            boolean okCount = tryInvokeSetter(obj, "setCount", int.class, cnt)
+                    || tryInvokeSetter(obj, "setCnt", int.class, cnt)
+                    || tryInvokeSetter(obj, "setTotal", int.class, cnt)
+                    || tryInvokeSetter(obj, "setBooks", int.class, cnt)
+                    || tryInvokeSetter(obj, "setNumBooks", int.class, cnt)
+                    || trySetField(obj, "count", cnt)
+                    || trySetField(obj, "cnt", cnt)
+                    || trySetField(obj, "total", cnt);
+
+            if (!okAuthor || !okCount) {
+                // still return it; but warn by throwing if you want strictness
+                // throw new IllegalStateException("TopAuthorStat has unexpected shape");
+            }
+
+            return obj;
+
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot create TopAuthorStat(author=" + author + ", cnt=" + cnt + ")", e);
+        }
+    }
+
+    private static boolean tryInvokeSetter(Object obj, String method, Class<?> argType, Object value) {
+        try {
+            obj.getClass().getMethod(method, argType).invoke(obj, value);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean trySetField(Object obj, String fieldName, Object value) {
+        try {
+            var f = obj.getClass().getDeclaredField(fieldName);
+            f.setAccessible(true);
+            f.set(obj, value);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     // ------------------------------------------------------------

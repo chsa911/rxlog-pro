@@ -10,15 +10,15 @@ import (
 )
 
 // SizeRule represents one row in sizerules.csv.
-// WidthMinCm / WidthMaxCm define the size band;
-// SpecialHeightsCm contains heights that get a dedicated prefix/position.
+// The CSV is authored in cm for readability, but the engine runs purely on mm
+// integers to avoid float edge-cases.
 type SizeRule struct {
 	SizeGroup      int
-	WidthMinCm     float64
-	WidthMaxCm     float64
-	ThresholdCm    float64
+	WidthMinMm     int
+	WidthMaxMm     int
+	ThresholdMm    int
 	Variants       []SizeRuleVariant
-	SpecialHeights []float64
+	SpecialHeights []int
 }
 
 // SizeRuleVariant represents one “alternative” within a size rule.
@@ -81,13 +81,15 @@ func normalizeTokenList(tokens []string, n int) ([]string, error) {
 	return tokens, nil
 }
 
-func parseHeights(s string) []float64 {
+// parseHeightsMm parses a semicolon-separated list of heights in cm (as written
+// in the CSV) and converts them to integer millimeters.
+func parseHeightsMm(s string) []int {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil
 	}
 	parts := strings.Split(s, ";")
-	out := make([]float64, 0, len(parts))
+	out := make([]int, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
@@ -95,7 +97,7 @@ func parseHeights(s string) []float64 {
 		}
 		v, err := strconv.ParseFloat(strings.ReplaceAll(p, ",", "."), 64)
 		if err == nil {
-			out = append(out, v)
+			out = append(out, int(math.Round(v*10.0)))
 		}
 	}
 	return out
@@ -189,31 +191,32 @@ func loadSizeRulesCSV(path string) ([]SizeRule, error) {
 				RankEnd:       rankEndN[vi],
 			})
 		}
-		specialHeights := parseHeights(row[8])
+
+		specialHeightsMm := parseHeightsMm(row[8])
 
 		rules = append(rules, SizeRule{
 			SizeGroup:      sg,
-			WidthMinCm:     wmin,
-			WidthMaxCm:     wmax,
-			ThresholdCm:    th,
+			WidthMinMm:     int(math.Round(wmin * 10.0)),
+			WidthMaxMm:     int(math.Round(wmax * 10.0)),
+			ThresholdMm:    int(math.Round(th * 10.0)),
 			Variants:       variants,
-			SpecialHeights: specialHeights,
+			SpecialHeights: specialHeightsMm,
 		})
 	}
 	return rules, nil
 }
 
-func (r SizeRule) matchesWidth(widthCm float64) bool {
-	return widthCm >= r.WidthMinCm && widthCm <= r.WidthMaxCm
+func (r SizeRule) matchesWidth(widthMm int) bool {
+	return widthMm >= r.WidthMinMm && widthMm <= r.WidthMaxMm
 }
 
-func pickRule(rules []SizeRule, widthCm float64) (*SizeRule, error) {
+func pickRule(rules []SizeRule, widthMm int) (*SizeRule, error) {
 	for i := range rules {
-		if rules[i].matchesWidth(widthCm) {
+		if rules[i].matchesWidth(widthMm) {
 			return &rules[i], nil
 		}
 	}
-	return nil, fmt.Errorf("no size rule for width %.1f cm", widthCm)
+	return nil, fmt.Errorf("no size rule for width %d mm (%.1f cm)", widthMm, float64(widthMm)/10.0)
 }
 
 func loadRanking(path string) ([]string, error) {
@@ -266,25 +269,20 @@ func NewBarcodeSystem(rules []SizeRule, ranking []string, alreadyUsed []string) 
 	}
 }
 
-func almostEqual(a, b float64) bool {
-	return math.Abs(a-b) < 0.05
-}
-
-func isSpecialHeight(hCm float64, specials []float64) bool {
-	hRounded := math.Round(hCm*10) / 10
-	for _, s := range specials {
-		if almostEqual(hRounded, s) {
+func isSpecialHeightMm(hMm int, specialsMm []int) bool {
+	for _, s := range specialsMm {
+		if hMm == s {
 			return true
 		}
 	}
 	return false
 }
 
-func choosePrefixAndPosition(rule *SizeRule, v *SizeRuleVariant, heightCm float64) (prefix string, position string) {
-	if isSpecialHeight(heightCm, rule.SpecialHeights) && strings.TrimSpace(v.SpecialPrefix) != "" {
+func choosePrefixAndPosition(rule *SizeRule, v *SizeRuleVariant, heightMm int) (prefix string, position string) {
+	if isSpecialHeightMm(heightMm, rule.SpecialHeights) && strings.TrimSpace(v.SpecialPrefix) != "" {
 		return v.SpecialPrefix, "left"
 	}
-	if heightCm < rule.ThresholdCm {
+	if heightMm < rule.ThresholdMm {
 		return v.LowPrefix, "down"
 	}
 	return v.HighPrefix, "up"
@@ -294,7 +292,7 @@ func choosePrefixAndPosition(rule *SizeRule, v *SizeRuleVariant, heightCm float6
 // based on the loaded size rules and current usage.
 // Returns code, matching rule, position ("top"/"bottom"/"left"), or an error
 // if no code or rule applies.
-// isSpecialHeight checks if hCm matches one of the "special" heights
+// isSpecialHeight checks if hMm matches one of the "special" heights
 // (e.g. to force a specific edge placement).
 // rankingWindow returns the list of suffixes to consider for a variant.
 //
@@ -360,21 +358,19 @@ func (bs *BarcodeSystem) NextBarcodeCandidate(widthMm, heightMm int) (code strin
 	if widthMm <= 0 || heightMm <= 0 {
 		return "", nil, nil, "", fmt.Errorf("width and height must be greater than zero")
 	}
-	wCm := float64(widthMm) / 10.0
-	hCm := float64(heightMm) / 10.0
 
-	r, err := pickRule(bs.rules, wCm)
+	r, err := pickRule(bs.rules, widthMm)
 	if err != nil {
 		return "", nil, nil, "", err
 	}
 	if len(r.Variants) == 0 {
-		return "", nil, nil, "", fmt.Errorf("no variants configured for width %.1f cm", wCm)
+		return "", nil, nil, "", fmt.Errorf("no variants configured for width %d mm (%.1f cm)", widthMm, float64(widthMm)/10.0)
 	}
 
 	// Try variants in order (priority), fall back to next if this variant has no stock.
 	for vi := range r.Variants {
 		v := &r.Variants[vi]
-		prefix, pos := choosePrefixAndPosition(r, v, hCm)
+		prefix, pos := choosePrefixAndPosition(r, v, heightMm)
 		if strings.TrimSpace(prefix) == "" {
 			continue
 		}
@@ -390,9 +386,12 @@ func (bs *BarcodeSystem) NextBarcodeCandidate(widthMm, heightMm int) (code strin
 
 	// Build a helpful error message.
 	firstV := &r.Variants[0]
-	prefix, _ := choosePrefixAndPosition(r, firstV, hCm)
+	prefix, _ := choosePrefixAndPosition(r, firstV, heightMm)
 	if strings.TrimSpace(prefix) == "" {
-		return "", nil, nil, "", fmt.Errorf("no prefix configured for width %.1f cm and height %.1f cm", wCm, hCm)
+		return "", nil, nil, "", fmt.Errorf(
+			"no prefix configured for width %d mm (%.1f cm) and height %d mm (%.1f cm)",
+			widthMm, float64(widthMm)/10.0, heightMm, float64(heightMm)/10.0,
+		)
 	}
 	return "", nil, nil, "", fmt.Errorf("no free barcode left for any variant of sizegroup %d", r.SizeGroup)
 }
