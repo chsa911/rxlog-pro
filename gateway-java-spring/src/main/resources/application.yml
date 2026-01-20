@@ -25,7 +25,6 @@ spring:
           uri: ${REGISTER_URL:http://bookservice-java-spring:8086}
           predicates:
             - Path=/api/public/**
-            - lsof -i :8080
 
 management:
   endpoints:
