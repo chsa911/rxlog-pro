@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html xmlns:https="http://www.w3.org/1999/xhtml" xmlns:border-radius="http://www.w3.org/1999/xhtml"
+      xmlns:float="http://www.w3.org/1999/xhtml">
+
+<head>
+    <style>
+        html * {
+          font-size: 16px;
+          line-height: 1.625;
+          color: #101013;
+          font-family: Arial, sans-serif;
+        }
+    </style>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,
+     initial-scale=1.0, shrink-to-fit=no">
+    <title>0x index indx</title>
+
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+
+    <link rel="stylesheet" href="/assets/css/styles.min.css">
+</head>
+
+<body style=" background-color: #95d4cf">
+<!--toparea-->
+<header class="zr-topbar">
+    <a class="zr-logo" href="/index.html">
+        <img src="/assets/images/allgemein/logo.jpeg" alt="Zenreader logo">
+    </a>
+
+    <form class="zr-search" action="/books/" method="get">
+        <input type="text" name="q" placeholder="Bücher oder Autoren suchen…">
+        <button type="submit" aria-label="Search">🔎</button>
+    </form>
+
+    <nav class="zr-nav">
+        <a class="zr-btn" href="/ueber_mich.html">About me</a>
+        <a class="zr-btn" href="/index.html">HOME</a>
+        <a class="zr-btn" href="/analytics/">Readingdiary</a>
+        <a class="zr-btn" href="/kontaktformular.html">Contact</a>
+        <a class="zr-btn" href="/newsletter.html">Newsletter</a>
+        <a class="zr-btn" href="/merchandise.html">Shop</a>
+        <a class="zr-btn" href="/faq.html">FAQ</a>
+        <a class="zr-btn" href="https://admin.zenreader.net/">Login</a>
+        <a class="zr-btn zr-youtube" href="https://www.youtube.com/@zenreader2026">Youtube</a>
+        <a class="zr-btn zr-tiktok" href="https://www.tiktok.com/@zenreader26">Tiktok</a>
+        <a class="zr-btn zr-instagram" href="https://www.instagram.com/zenreader26/">Instagram</a>
+    </nav>
+</header>
+
+<style>
+    .zr-topbar{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:12px 16px;
+      flex-wrap:wrap;
+    }
+    .zr-logo img{ height:72px; width:auto; display:block; }
+    .zr-search{ display:flex; gap:8px; align-items:center; flex:1 1 260px; }
+    .zr-search input{
+      width:100%;
+      max-width:520px;
+      padding:8px 10px;
+      border-radius:10px;
+      border:1px solid #cfcfcf;
+    }
+    .zr-search button{
+      padding:8px 10px;
+      border-radius:10px;
+      border:1px solid #cfcfcf;
+      background:#fff;
+    }
+    .zr-nav{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      justify-content:flex-end;
+      margin-left:auto;
+    }
+    .zr-btn{
+      background:#d300bd;
+      color:#fff;
+      padding:6px 10px;
+      border:2px solid #fff;
+      border-radius:8px;
+      text-decoration:none;
+      font-size:14px;
+      line-height:1.2;
+      display:inline-block;
+      white-space:nowrap;
+    }
+    .zr-youtube{ background:#e60000; }
+    .zr-tiktok{ background:#111; }
+    .zr-instagram{ background:#d300bd; }
+</style>
+<!-- 2026 reading stats (loaded from Postgres via /api/public/books/stats) -->
+<div id="home-year-stats-wrap" style="max-width:1100px;margin:14px auto 0;padding:0 16px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+        <div style="font-size:14px;color:#111;font-weight:600;">Books in <span id="home-year-stats-year">2026</span></div>
+        <div id="home-year-stats-note" style="font-size:12px;color:#333;">loading…</div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;border:2px solid white;border-radius:14px;padding:12px 14px;background:rgba(255,255,255,0.65);">
+            <div style="font-size:12px;color:#333;">Finished</div>
+            <div id="home-year-stats-finished" style="font-size:30px;font-weight:700;line-height:1.1;">—</div>
+        </div>
+        <div style="flex:1;min-width:160px;border:2px solid white;border-radius:14px;padding:12px 14px;background:rgba(255,255,255,0.65);">
+            <div style="font-size:12px;color:#333;">Abandoned</div>
+            <div id="home-year-stats-abandoned" style="font-size:30px;font-weight:700;line-height:1.1;">—</div>
+        </div>
+        <div style="flex:1;min-width:160px;border:2px solid white;border-radius:14px;padding:12px 14px;background:rgba(255,255,255,0.65);">
+            <div style="font-size:12px;color:#333;">Top</div>
+            <div id="home-year-stats-top" style="font-size:30px;font-weight:700;line-height:1.1;">—</div>
+        </div>
+    </div>
+    <div id="home-year-stats-error" style="display:none;margin-top:10px;color:#b00020;font-size:12px;"></div>
+</div>
+
+<script>
+    (() => {
+      const DEFAULT_YEAR = 2026;
+      const year = DEFAULT_YEAR;
+
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+
+      const noteEl = document.getElementById('home-year-stats-note');
+      const errEl = document.getElementById('home-year-stats-error');
+
+      const setNote = (msg) => {
+        if (noteEl) noteEl.textContent = msg;
+      };
+
+      const showError = (msg) => {
+        if (errEl) {
+          errEl.style.display = 'block';
+          errEl.textContent = msg;
+        }
+        setNote('');
+      };
+
+      // Production: same-origin "/api/..."
+      // Local dev: try localhost:3001 then localhost:3000
+      const isLocal =
+        (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
+      const candidates = isLocal
+        ? ['http://localhost:3001', 'http://localhost:3000']
+        : [''];
+
+      async function fetchStats() {
+        const urlPath = `/api/public/books/stats?year=${encodeURIComponent(year)}`;
+        let lastErr = null;
+
+        for (const base of candidates) {
+          try {
+            const resp = await fetch(`${base}${urlPath}`, {
+              headers: { Accept: 'application/json' },
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            return { data, base };
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error('Unknown error');
+      }
+
+      async function load() {
+        setText('home-year-stats-year', String(year));
+        setNote('loading…');
+
+        try {
+          const { data, base } = await fetchStats();
+
+          setText('home-year-stats-finished', String(data?.finished ?? 0));
+          setText('home-year-stats-abandoned', String(data?.abandoned ?? 0));
+          setText('home-year-stats-top', String(data?.top ?? 0));
+
+          setNote(base ? `live from DB (${base})` : 'live from DB');
+        } catch (e) {
+          setText('home-year-stats-finished', '—');
+          setText('home-year-stats-abandoned', '—');
+          setText('home-year-stats-top', '—');
+          showError(`Could not load stats: ${e?.message || String(e)}`);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        void load();
+      }
+    })();
+</script>
+
+<div style="background-color: mintcream">
+    <main role="main">
+        <h1 style=" width= 100px; text-align: center; background-color: rgb(0, 255, 191)">.</h1>
+        <!--contentarea-->
+        <ul>
+            <h5 style="
+  font-family: 'Apple Chancery','Zapf Chancery','URW Chancery L','Lucida Calligraphy',cursive;
+  margin: 5px 30px;
+  font-size: 25px;
+">
+                "I don't need a lot... But all I need is a good book."
+            </h5>
+            <p style="font-family: 'arial'; margin: 1px 30px; font-size: 20px;">This saying best explains my time consuming book procurement administering and reading process
+                and my disruptive reading <a style="font-family: 'arial';font-size: 20px; color: #00d37c" href="/technik.html"> technique <img src="/assets/images/allgemein/hosentasche_link.jpeg"width="20%" height="50"></a>
+                which enables me to read every free minute and to select only pageturners out of a big variety of books. A dream!!
+            <p>
+            <p style=" font-family: 'arial'; margin: 1px 30px; font-size: 20px;"> See which <a
+                    style="font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #00d37c; text-align: left;"
+                    href="/ausruestung.html">equipment <img src="/assets/images/allgemein/buecherschrank_link.jpeg"
+                                                                            width="20%" height="50"></a> I am using and which books I have discovered
+                as pageturners
+                <a style="font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #00d37c; text-align: left;"
+
+                   href="/entdeckungen/2024/oktober.html">recently <img src="/assets/images/allgemein/schatzkiste.jpeg"width="20%" height="70"></a>.
+            <p style=" font-family: 'arial'; margin: 1px 30px; font-size: 20px;">
+                Get to know my most read <a
+                    style="font-family: 'arial';font-size: 20px; color: #00d37c"
+                    href="/autoren_meistgelesen.html">
+                authors<img src="/assets/images/allgemein/autoren_link.jpeg"
+                            width="20%" height="50"></a>
+            <p style="  font-family: 'arial'; margin: 1px 30px; font-size: 20px;">See which<a
+                    style=" font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #00d37c; text-align: left;"
+                    href="/links.html"> sources </a>inspire me how I find my <a
+                    style="font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #00d37c; text-align: left;"
+                    href="/beschaffung.html"> books </a>.
+            <p style=" font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #de1211; text-align: left;">Here is my <a style=" font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #00d37c; text-align: left;" href="https://podcasters.spotify.com/pod/show/chris-san1/episodes/mobile-reading-in-daily-live-e2qltnu">podcast</a> with Andreas Bach from the youtube channel <a style=" font-family: 'arial'; margin: -1px -1px; font-size: 20px; color: #00d37c; text-align: left;"href="https://www.youtube.com/watch?v=GoRloM7Td5A&t=7s">"bookdeckel"</a>
+                And finally get to know my dog lili which accompanies me now on my reading trips and is now the symbol of my bookswipe promotion activities.
+        </ul>
+        <!--bottomarea-->
+        <h1 style="width= 100px; font-family: 'arial'; text-align: center; background-color: rgb(0, 255, 191);--> ">.</h1>
+
+</div>
+</section>
+</p></main>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/js/bootstrap.bundle.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
+<script type="module" src="/assets/javascript/index-logic.js"></script>
+</body>
+</html>

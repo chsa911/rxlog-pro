@@ -1,0 +1,99 @@
+/* Globales Styling, damit /books (Frontend-Analytics) wie die restliche Website aussieht */
+
+:root {
+  --zr-bg: #95d4cf;
+  --zr-accent: #d300bd;
+  --zr-link-border: #ffffff;
+}
+
+/* Website-Hintergrund */
+body.zr-body {
+  background-color: var(--zr-bg);
+}
+
+/* Header */
+.zr-toparea {
+  width: 100%;
+}
+
+.zr-logo img {
+  width: 15%;
+  height: 200px;
+  object-fit: contain;
+}
+
+.zr-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.zr-toplink {
+  background-color: var(--zr-accent);
+  color: #fff;
+  margin: 1px;
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 2px solid var(--zr-link-border);
+  border-radius: 4px;
+  text-decoration: none;
+  display: inline-block;
+  line-height: 1.2;
+}
+
+.zr-toplink:hover {
+  filter: brightness(0.95);
+  color: #fff;
+}
+
+.zr-toplink.zr-yt {
+  background-color: red;
+}
+
+.zr-toplink.zr-tt {
+  background-color: #000;
+}
+
+/* App-Bereich */
+.zr-main {
+  padding: 16px 0 32px;
+}
+
+.zr-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.zr-btn-primary {
+  background-color: var(--zr-accent);
+  border: 2px solid var(--zr-link-border);
+  color: #fff;
+}
+
+.zr-btn-primary:hover {
+  filter: brightness(0.95);
+  color: #fff;
+}
+
+.zr-btn-toggle {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+}
+
+.zr-btn-toggle.active {
+  background-color: var(--zr-accent);
+  border-color: var(--zr-link-border);
+  color: #fff;
+}
+
+/* Mobile: Logo nicht riesig */
+@media (max-width: 768px) {
+  .zr-logo img {
+    width: 160px;
+    height: 120px;
+  }
+}

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Büchertagebuch</title>
+  <!-- base-href wird beim Build typischerweise überschrieben (z.B. /books/) -->
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- Website-Styles (wie in den statischen Seiten) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+  <!-- liegt auf der Website (nicht im Angular-Projekt) -->
+  <link rel="stylesheet" href="/assets/css/styles.min.css">
+
+  <style>
+    html * {
+      font-size: 16px;
+      line-height: 1.625;
+      color: #101013;
+      font-family: Arial, sans-serif;
+    }
+  </style>
+</head>
+<body class="zr-body">
+  <!-- Header im Stil der Website -->
+  <header class="zr-toparea">
+    <div class="container-fluid">
+      <div class="d-flex flex-wrap align-items-start justify-content-between py-2">
+        <a class="zr-logo" href="/index.html" aria-label="Home">
+          <img id="loix" src="/assets/images/allgemein/logo.jpeg" alt="Logo" />
+        </a>
+
+        <nav class="zr-links" aria-label="Navigation">
+          <a class="zr-toplink" href="/index.html">HOME</a>
+          <a class="zr-toplink" href="/ueber_mich.html">About me</a>
+          <a class="zr-toplink" href="/buechertagebuch.html">Büchertagebuch</a>
+          <a class="zr-toplink" href="/newsletter.html">Newsletter</a>
+          <a class="zr-toplink" href="/merchandise.html">Shop</a>
+          <a class="zr-toplink" href="/kontaktformular.html">Contact</a>
+          <a class="zr-toplink" href="/faq.html">FAQ</a>
+          <a class="zr-toplink" href="https://admin.zenreader.net/">Login</a>
+          <a class="zr-toplink" href="/impressum.html">Disclaimer</a>
+
+          <a class="zr-toplink zr-yt" href="https://www.youtube.com/@zenreader2026">Youtube</a>
+          <a class="zr-toplink zr-tt" href="https://www.tiktok.com/@zenreader26">Tiktok</a>
+          <a class="zr-toplink" href="https://www.instagram.com/zenreader26/">Instagram</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="zr-main">
+    <app-root></app-root>
+  </main>
+</body>
+</html>
