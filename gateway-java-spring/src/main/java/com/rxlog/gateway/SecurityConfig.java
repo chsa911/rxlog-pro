@@ -35,15 +35,24 @@ public class SecurityConfig {
                         .pathMatchers("/actuator/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/public/**").permitAll()
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // ✅ Allow mobile sync without JWT (so the iOS app can call it)
+                        // Order matters: this must be ABOVE "/api/mobile/**"
+                        .pathMatchers(HttpMethod.POST, "/api/mobile/sync").permitAll()
+
+                        // 🔒 Keep the rest protected
                         .pathMatchers("/api/register/**", "/api/mobile/**", "/api/barcodes/**").hasRole("ADMIN")
-                        .anyExchange().permitAll()
+
+                        // Everything else requires auth (safer default)
+                        .anyExchange().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter())))
                 .build();
     }
 
     @Bean
-    Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthConverter() {        JwtAuthenticationConverter conv = new JwtAuthenticationConverter();
+    Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthConverter() {
+        JwtAuthenticationConverter conv = new JwtAuthenticationConverter();
 
         JwtGrantedAuthoritiesConverter scopes = new JwtGrantedAuthoritiesConverter();
         conv.setJwtGrantedAuthoritiesConverter(jwt -> {
@@ -75,7 +84,7 @@ public class SecurityConfig {
                 Object rs = m.get("roles");
                 if (rs instanceof Collection<?> col) {
                     for (Object r : col) if (r != null) roles.add(r.toString());
-                  }
+                }
             }
         }
 
