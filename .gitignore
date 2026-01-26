@@ -1,28 +1,62 @@
-
-# artifacts
-*.zip
-
-# local / secrets
-.env
-
-# artifacts
-*.zip
-*.dump
-*.sql
-
-# build caches
-node_modules/
-dist/
-build/
-.gradle/
-.idea/
+########################
+# OS junk
+########################
 .DS_Store
+Thumbs.db
 
-# local data dumps
-data/
-db/dumps/
-dumps/
+########################
+# IDE / editor
+########################
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+*.tmp
 
-# embedded repo (avoid accidental add)
-services/ios/RxLogMobile/
-.env
+########################
+# Gradle / Java / Kotlin
+########################
+.gradle/
+build/
+**/build/
+out/
+*.class
+
+# If you ever use IntelliJ out dirs
+out/
+
+########################
+# Node / React
+########################
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+########################
+# Go
+########################
+**/bin/
+**/*.test
+**/*.exe
+
+########################
+# Logs
+########################
+logs/
+**/logs/
+*.log
+
+########################
+# Office / temp docs
+########################
+*.odt
+~$*.odt
+.~lock.*#
+
+########################
+# Backups / misc
+########################
+*.bak.env
