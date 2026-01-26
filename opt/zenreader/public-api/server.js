@@ -5,9 +5,7 @@ const { Pool } = pg;
 const app = express();
 
 const pool = new Pool({
-  // In some local setups the DATABASE_URL may accidentally contain whitespace (e.g. before '?sslmode=...').
-  // pg's connection-string parser is strict, so we normalise it here.
-  connectionString: (process.env.DATABASE_URL || "").trim().replace(/\s+/g, ""),
+  connectionString: process.env.DATABASE_URL,
   // Neon: minimal & pragmatisch
   ssl: { rejectUnauthorized: false },
 });
@@ -65,55 +63,6 @@ app.get("/api/public/books", async (req, res) => {
 
     const { rows } = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) {
-    res.status(500).json({ error: String(e?.message || e) });
-  }
-});
-
-// Yearly stats (finished/abandoned/top/registered) derived from Postgres.
-// Used by the public books page to show a small dashboard.
-app.get("/api/public/books/stats", async (req, res) => {
-  try {
-    const nowYear = new Date().getUTCFullYear();
-    const year = Number.parseInt((req.query.year || String(nowYear)).toString(), 10);
-    if (!Number.isFinite(year) || year < 1900 || year > 3000) {
-      return res.status(400).json({ error: "Invalid year" });
-    }
-
-    const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0)).toISOString();
-    const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0)).toISOString();
-
-    const sql = `
-      SELECT
-        COUNT(*) FILTER (WHERE registered_at >= $1 AND registered_at < $2) AS registered,
-        COUNT(*) FILTER (
-          WHERE reading_status = 'finished'
-            AND reading_status_updated_at >= $1 AND reading_status_updated_at < $2
-        ) AS finished,
-        COUNT(*) FILTER (
-          WHERE reading_status = 'abandoned'
-            AND reading_status_updated_at >= $1 AND reading_status_updated_at < $2
-        ) AS abandoned,
-        COUNT(*) FILTER (
-          WHERE top_book = true
-            AND top_book_set_at >= $1 AND top_book_set_at < $2
-        ) AS top
-      FROM public.books;
-    `;
-
-    const { rows } = await pool.query(sql, [start, end]);
-    const r = rows?.[0] || {};
-
-    // pg returns COUNT() as text by default.
-    const toInt = (v) => (v === null || v === undefined ? 0 : Number.parseInt(String(v), 10) || 0);
-
-    res.json({
-      year,
-      registered: toInt(r.registered),
-      finished: toInt(r.finished),
-      abandoned: toInt(r.abandoned),
-      top: toInt(r.top),
-    });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
