@@ -60,3 +60,4 @@ logs/
 # Backups / misc
 ########################
 *.bak.env
+opt/zenreader/.env*
