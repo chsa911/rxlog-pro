@@ -32,6 +32,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
 
                         // ✅ ADMIN endpoints secured
+                .requestMatchers(HttpMethod.POST, "/api/mobile/sync").permitAll()
                         .requestMatchers("/api/register/**", "/api/mobile/**").hasRole("ADMIN")
 
                         // everything else requires a valid token

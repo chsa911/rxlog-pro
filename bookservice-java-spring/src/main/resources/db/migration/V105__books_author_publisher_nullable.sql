@@ -1,0 +1,3 @@
+ALTER TABLE public.books
+  ALTER COLUMN author_id DROP NOT NULL,
+  ALTER COLUMN publisher_id DROP NOT NULL;

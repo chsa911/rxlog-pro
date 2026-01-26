@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" data-beasties-container="">
+<head>
+  <meta charset="utf-8">
+  <title>FrontendPublic</title>
+  <base href="/books/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="stylesheet" href="/books/styles-5INURTSO.css"></head>
+<body ngcm="">
+<script type="module" src="/assets/javascript/site-header.js"></script>
+
+  <app-root></app-root>
+<script src="/books/main-ZFWM2GFX.js" type="module"></script>
+<script>
+/**
+ * Bridge header search (?q=...) into the Angular public books page:
+ * - Prefills title field from ?q
+ * - Auto-runs a search once the Angular UI is ready
+ */
+(function () {
+  const params = new URLSearchParams(location.search);
+  const q = (params.get('q') || '').trim();
+
+  function tryApply() {
+    const inputs = Array.from(document.querySelectorAll('input'));
+    const searchBtn = Array.from(document.querySelectorAll('button'))
+      .find(b => (b.textContent || '').trim().toLowerCase() === 'suchen');
+
+    if (inputs.length < 2 || !searchBtn) return false;
+
+    const titleInput = inputs[1];
+
+    if (q) {
+      titleInput.value = q;
+      titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    searchBtn.click();
+    return true;
+  }
+
+  const start = Date.now();
+  const timer = setInterval(() => {
+    if (tryApply()) return clearInterval(timer);
+    if (Date.now() - start > 6000) clearInterval(timer);
+  }, 80);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+:80 {
+  handle /api/public/books* {
+    reverse_proxy public-api:3000
+  }
+
+  redir /books /books/ 308
+  handle_path /books* {
+    root * /srv/site/books
+    try_files {path} /index.html
+    file_server
+  }
+
+  handle {
+    root * /srv/site
+    file_server
+  }
+}

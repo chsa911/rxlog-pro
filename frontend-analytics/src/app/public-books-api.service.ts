@@ -7,6 +7,8 @@ export type Bucket = 'top' | 'finished' | 'abandoned' | 'registered';
 export interface PublicBookRow {
   author: string;
   title: string;
+  purchaseVendor?: string;
+  purchaseLink?: string;
 }
 
 @Injectable({ providedIn: 'root' })

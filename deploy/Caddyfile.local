@@ -1,0 +1,69 @@
+th.zenreader.net {
+  reverse_proxy keycloak:8080 {
+    header_up X-Forwarded-Proto https
+    header_up X-Forwarded-Host {host}
+
+  }
+}
+
+# Admin
+admin.zenreader.net {
+  basic_auth {
+    admin $2a$14$db/xQDK88Yhl2PxfKedE.ewqnHM7nay/5zcaPvDEHP03qaiUPipz2
+  }
+
+  handle /api/* {
+    reverse_proxy gateway-java-spring:8080
+  }
+
+  handle {
+    root * /srv/site/admin
+    try_files {path} /index.html
+    file_server
+  }
+}
+
+# bookswiper -> zenreader
+bookswiper.com, www.bookswiper.com {
+  redir https://zenreader.net{uri} 301
+}
+
+# Main domain
+zenreader.net, www.zenreader.net {
+  handle /api/public/books/in-stock-count {
+    reverse_proxy gateway-java-spring:8080
+  }
+
+  handle /api/public/books* {
+    reverse_proxy public-api:3000
+  }
+
+
+
+  handle /api/mobile/* {
+    reverse_proxy gateway-java-spring:8080
+  }
+
+  handle /actuator/* {
+    reverse_proxy gateway-java-spring:8080
+  }
+
+  redir /books /books/ 308
+  handle_path /books* {
+    root * /srv/site/books
+    try_files {path} /index.html
+    file_server
+  }
+
+  redir /analytics /analytics/ 308
+  handle_path /analytics* {
+    root * /srv/site/analytics
+    try_files {path} /index.html
+    file_server
+  }
+
+  handle {
+    root * /srv/site
+    file_server
+  }
+}

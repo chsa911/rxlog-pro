@@ -1,0 +1,47 @@
+# Admin (Basic Auth + Barcode API)
+admin.zenreader.net {
+  basic_auth {
+    admin $2a$14$tdSqx9OjGhE9/Zns.9Q/1eozNXVQTypzON/3VrP6zPVrDuFCNW1Ri1
+  }
+
+  # Barcode API -> barcodes-go (WICHTIG: kein handle_path, kein strip_prefix)
+  handle /api/barcodes/* {
+    reverse_proxy barcodes:8082
+  }
+
+  # Alles andere -> Admin UI (React/Nginx)
+  handle {
+    reverse_proxy admin-web:80
+  }
+}
+
+# bookswiper -> zenreader
+bookswiper.com, www.bookswiper.com {
+  redir https://zenreader.net{uri} 301
+}
+
+# Hauptdomain (statisch + /books SPA + public api)
+zenreader.net, www.zenreader.net {
+
+  # API für Angular
+  handle /api/public/books* {
+    reverse_proxy public-api:3000
+  }
+
+  # Angular SPA unter /books/ (SPA-Fallback!)
+  redir /books /books/ 308
+  handle_path /books* {
+    root * /srv/site/books
+    try_files {path} /index.html
+    file_server
+  }
+
+  # Alles andere: statische Seiten
+  handle {
+    root * /srv/site
+    file_server
+  }
+
+  # optional:
+  # redir / /books/ 302
+}

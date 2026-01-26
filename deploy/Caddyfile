@@ -1,33 +1,45 @@
-{
-  # Optional: für Let's Encrypt Kontaktmail
-  # email you@example.com
+# Admin (redirect for now)
+admin.zenreader.net {
+
+  handle /api/* {
+   reverse_proxy zenreader-gateway-java-spring-1:8080
+  }
+
+  handle {
+    root * /srv/site/admin
+    try_files {path} /index.html
+    file_server
+  }
 }
 
+# bookswiper -> zenreader
+bookswiper.com, www.bookswiper.com {
+  redir https://zenreader.net{uri} 301
+}
+
+# Hauptdomain (statisch + /books SPA + public api)
 zenreader.net, www.zenreader.net {
-  # Public Website inkl. /books
-  handle /api/public/* {
-    reverse_proxy bookservice-java-spring:8086
+
+  handle /api/public/books* {
+    reverse_proxy public-api:3000
+  }
+
+  redir /books /books/ 308
+  handle_path /books* {
+    root * /srv/site/books
+    try_files {path} /index.html
+    file_server
+  }
+
+  redir /analytics /analytics/ 308
+  handle_path /analytics* {
+    root * /srv/site/analytics
+    try_files {path} /index.html
+    file_server
   }
 
   handle {
     root * /srv/site
     file_server
-  }
-}
-
-admin.zenreader.net {
-  basicauth {
-    admin $2a$14$zc81t7PznhPWUfevzmEwLern5VOYqgRGuTOK1zzpHQz8LL9j9oRQu
-  }
-
-  # Admin darf alles, was du brauchst
-  handle /api/public/*   { reverse_proxy bookservice-java-spring:8086 }
-  handle /api/register/* { reverse_proxy bookservice-java-spring:8086 }
-  handle /api/mobile/*   { reverse_proxy bookservice-java-spring:8086 }
-  handle /api/barcodes/* { reverse_proxy barcodes-go:8082 }
-
-  # Admin UI
-  handle {
-    reverse_proxy admin-web:80
   }
 }

@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="de" data-beasties-container><head>
+  <meta charset="utf-8">
+  <title>Büchertagebuch</title>
+  <!-- base-href wird beim Build typischerweise überschrieben (z.B. /books/) -->
+  <base href="/analytics/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- Website-Styles (wie in den statischen Seiten) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+  <!-- liegt auf der Website (nicht im Angular-Projekt) -->
+  <link rel="stylesheet" href="/assets/css/styles.min.css">
+
+  <style>
+    html * {
+      font-size: 16px;
+      line-height: 1.625;
+      color: #101013;
+      font-family: Arial, sans-serif;
+    }
+  </style>
+<style>:root{--zr-bg: #95d4cf;--zr-accent: #d300bd;--zr-link-border: #ffffff}body.zr-body{background-color:var(--zr-bg)}.zr-toparea{width:100%}.zr-logo img{width:15%;height:200px;object-fit:contain}.zr-links{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}.zr-toplink{background-color:var(--zr-accent);color:#fff;margin:1px;font-size:14px;padding:6px 10px;border:2px solid var(--zr-link-border);border-radius:4px;text-decoration:none;display:inline-block;line-height:1.2}.zr-toplink:hover{filter:brightness(.95);color:#fff}.zr-toplink.zr-yt{background-color:red}.zr-toplink.zr-tt{background-color:#000}.zr-main{padding:16px 0 32px}.zr-card{background:#ffffffeb;border:2px solid rgba(255,255,255,.9);border-radius:12px;box-shadow:0 6px 18px #00000014}.zr-btn-primary{background-color:var(--zr-accent);border:2px solid var(--zr-link-border);color:#fff}.zr-btn-primary:hover{filter:brightness(.95);color:#fff}.zr-btn-toggle{background:#fff;border:1px solid rgba(0,0,0,.15);border-radius:10px}.zr-btn-toggle.active{background-color:var(--zr-accent);border-color:var(--zr-link-border);color:#fff}@media(max-width:768px){.zr-logo img{width:160px;height:120px}}
+</style><link rel="stylesheet" href="styles-4BXCVNJK.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="styles-4BXCVNJK.css"></noscript></head>
+<body class="zr-body"><!--nghm--><script type="text/javascript" id="ng-event-dispatch-contract">(()=>{function p(t,n,r,o,e,i,f,m){return{eventType:t,event:n,targetElement:r,eic:o,timeStamp:e,eia:i,eirp:f,eiack:m}}function u(t){let n=[],r=e=>{n.push(e)};return{c:t,q:n,et:[],etc:[],d:r,h:e=>{r(p(e.type,e,e.target,t,Date.now()))}}}function s(t,n,r){for(let o=0;o<n.length;o++){let e=n[o];(r?t.etc:t.et).push(e),t.c.addEventListener(e,t.h,r)}}function c(t,n,r,o,e=window){let i=u(t);e._ejsas||(e._ejsas={}),e._ejsas[n]=i,s(i,r),s(i,o,!0)}window.__jsaction_bootstrap=c;})();
+</script><script>window.__jsaction_bootstrap(document.body,"ng",["submit","input","compositionstart","compositionend","click"],["blur"]);</script>
+  <!-- Header im Stil der Website -->
+  <header class="zr-toparea">
+    <div class="container-fluid">
+      <div class="d-flex flex-wrap align-items-start justify-content-between py-2">
+        <a class="zr-logo" href="/index.html" aria-label="Home">
+          <img id="loix" src="/assets/images/allgemein/logo.jpeg" alt="Logo">
+        </a>
+
+        <nav class="zr-links" aria-label="Navigation">
+          <a class="zr-toplink" href="/index.html">HOME</a>
+          <a class="zr-toplink" href="/ueber_mich.html">About me</a>
+          <a class="zr-toplink" href="/buechertagebuch.html">Büchertagebuch</a>
+          <a class="zr-toplink" href="/newsletter.html">Newsletter</a>
+          <a class="zr-toplink" href="/merchandise.html">Shop</a>
+          <a class="zr-toplink" href="/kontaktformular.html">Contact</a>
+          <a class="zr-toplink" href="/faq.html">FAQ</a>
+          <a class="zr-toplink" href="https://admin.zenreader.net/">Login</a>
+          <a class="zr-toplink" href="/impressum.html">Disclaimer</a>
+
+          <a class="zr-toplink zr-yt" href="https://www.youtube.com/@zenreader2026">Youtube</a>
+          <a class="zr-toplink zr-tt" href="https://www.tiktok.com/@zenreader26">Tiktok</a>
+          <a class="zr-toplink" href="https://www.instagram.com/zenreader26/">Instagram</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="zr-main">
+    <app-root ng-version="21.0.8" ngh="1" ng-server-context="ssg"><router-outlet></router-outlet><app-public-books-page ngh="0"><div class="container py-4" style="max-width: 980px;"><div class="zr-card p-3 p-md-4"><div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-3"><h1 class="h3 m-0">Öffentliche Bücherliste</h1><span class="text-muted" style="font-size: 0.95rem;">/books</span></div><form novalidate class="row g-2 align-items-end ng-untouched ng-pristine ng-valid" jsaction="submit:;"><div class="col-12 col-md-5"><label class="form-label">Autor</label><input name="author" placeholder="z. B. Fontane" class="form-control ng-untouched ng-pristine ng-valid" value jsaction="input:;blur:;compositionstart:;compositionend:;"></div><div class="col-12 col-md-5"><label class="form-label">Titel</label><input name="title" placeholder="z. B. Effi" class="form-control ng-untouched ng-pristine ng-valid" value jsaction="input:;blur:;compositionstart:;compositionend:;"></div><div class="col-12 col-md-auto"><button type="submit" class="btn zr-btn-primary w-100"> Suchen </button></div></form><div role="group" aria-label="Filter" class="d-flex flex-wrap gap-2 mt-3"><button type="button" class="btn zr-btn-toggle" jsaction="click:;"> Zuletzt Top </button><button type="button" class="btn zr-btn-toggle" jsaction="click:;"> Zuletzt beendet </button><button type="button" class="btn zr-btn-toggle" jsaction="click:;"> Zuletzt abgebrochen </button><button type="button" class="btn zr-btn-toggle active" jsaction="click:;"> Zuletzt registriert </button></div><!----><!----><!----><div class="mt-3 text-muted"> Keine Treffer. </div><!----></div></div></app-public-books-page><!----></app-root>
+  </main>
+<script src="main-ZQ6WQINL.js" type="module"></script>
+
+<script id="ng-state" type="application/json">{"__nghData__":[{"t":{"28":"t0","29":"t1","30":"t2","31":"t3"},"c":{"28":[],"29":[],"30":[],"31":[{"i":"t3","r":1}]}},{"c":{"0":[{"i":"c3008156649","r":1}]}}]}</script></body></html>

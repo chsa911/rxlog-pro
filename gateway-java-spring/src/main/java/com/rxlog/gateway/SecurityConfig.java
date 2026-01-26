@@ -35,6 +35,7 @@ public class SecurityConfig {
                         .pathMatchers("/actuator/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/public/**").permitAll()
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/mobile/sync").permitAll()
                         .pathMatchers("/api/register/**", "/api/mobile/**", "/api/barcodes/**").hasRole("ADMIN")
                         .anyExchange().permitAll()
                 )

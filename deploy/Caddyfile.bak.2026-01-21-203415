@@ -1,0 +1,29 @@
+# Admin (redirect for now)
+admin.zenreader.net {
+  redir https://zenreader.net{uri} 301
+}
+
+# bookswiper -> zenreader
+bookswiper.com, www.bookswiper.com {
+  redir https://zenreader.net{uri} 301
+}
+
+# Hauptdomain (statisch + /books SPA + public api)
+zenreader.net, www.zenreader.net {
+
+  handle /api/public/books* {
+    reverse_proxy public-api:3000
+  }
+
+  redir /books /books/ 308
+  handle_path /books* {
+    root * /srv/site/books
+    try_files {path} /index.html
+    file_server
+  }
+
+  handle {
+    root * /srv/site
+    file_server
+  }
+}

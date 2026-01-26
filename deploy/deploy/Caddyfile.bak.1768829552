@@ -1,0 +1,32 @@
+# Admin (Basic Auth)
+admin.zenreader.net {
+  basic_auth {
+    admin $2a$14$tdSqx9OjGhE9/Zns.9Q/1eozNXVQTypzON/3VrP6zPVrDuFCNW1Ri1
+  }
+  reverse_proxy admin-web:80
+}
+
+# bookswiper -> zenreader (permanent redirect)
+bookswiper.com, www.bookswiper.com {
+  redir https://zenreader.net{uri} 301
+}
+
+# Hauptdomain
+zenreader.net, www.zenreader.net {
+
+  handle /api/public/books* {
+    reverse_proxy public-api:3000
+  }
+
+  redir /books /books/ 308
+  handle_path /books* {
+    root * /srv/site/books
+    try_files {path} /index.html
+    file_server
+  }
+
+  handle {
+    root * /srv/site
+    file_server
+  }
+}

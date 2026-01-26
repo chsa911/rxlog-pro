@@ -1,0 +1,10 @@
+.git
+node_modules
+build
+dist
+.gradle
+out
+*.iml
+.DS_Store
+db/dumps/*.sql
+db/dumps/*.dump

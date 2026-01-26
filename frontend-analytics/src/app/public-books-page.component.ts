@@ -1,4 +1,4 @@
-import { Component, computed, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -9,50 +9,78 @@ import { Bucket, PublicBookRow, PublicBooksApiService } from './public-books-api
   selector: 'app-public-books-page',
   imports: [CommonModule, FormsModule],
   template: `
-    <div style="max-width:900px;margin:24px auto;font-family:system-ui,sans-serif;padding:0 16px;">
-      <h1>Öffentliche Bücherliste</h1>
+    <div class="container py-4" style="max-width: 980px;">
+      <div class="zr-card p-3 p-md-4">
+        <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-3">
+          <h1 class="h3 m-0">Öffentliche Bücherliste</h1>
+          <span class="text-muted" style="font-size: 0.95rem;">/books</span>
+        </div>
 
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin:16px 0;">
-        <label style="display:flex;flex-direction:column;gap:6px;">
-          Autor
-          <input [(ngModel)]="author" placeholder="z. B. Fontane" style="padding:8px;border:1px solid #ddd;border-radius:8px;" />
-        </label>
+        <form class="row g-2 align-items-end" (ngSubmit)="runSearch(); $event.preventDefault()">
+          <div class="col-12 col-md-5">
+            <label class="form-label">Autor</label>
+            <input class="form-control" [(ngModel)]="author" name="author" placeholder="z. B. Fontane" />
+          </div>
 
-        <label style="display:flex;flex-direction:column;gap:6px;">
-          Titel
-          <input [(ngModel)]="title" placeholder="z. B. Effi" style="padding:8px;border:1px solid #ddd;border-radius:8px;" />
-        </label>
+          <div class="col-12 col-md-5">
+            <label class="form-label">Titel</label>
+            <input class="form-control" [(ngModel)]="title" name="title" placeholder="z. B. Effi" />
+          </div>
 
-        <button (click)="runSearch()" style="padding:10px 14px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;">
-          Suchen
-        </button>
-      </div>
+          <div class="col-12 col-md-auto">
+            <button type="submit" class="btn zr-btn-primary w-100">
+              Suchen
+            </button>
+          </div>
+        </form>
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
-        <button (click)="setBucket('top')" [style.fontWeight]="bucket()==='top' ? '700':'400'">Zuletzt Top</button>
-        <button (click)="setBucket('finished')" [style.fontWeight]="bucket()==='finished' ? '700':'400'">Zuletzt beendet</button>
-        <button (click)="setBucket('abandoned')" [style.fontWeight]="bucket()==='abandoned' ? '700':'400'">Zuletzt abgebrochen</button>
-        <button (click)="setBucket('registered')" [style.fontWeight]="bucket()==='registered' ? '700':'400'">Zuletzt registriert</button>
-      </div>
+        <div class="d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Filter">
+          <button type="button" class="btn zr-btn-toggle" [class.active]="bucket()==='top'" (click)="setBucket('top')">
+            Zuletzt Top
+          </button>
+          <button type="button" class="btn zr-btn-toggle" [class.active]="bucket()==='finished'" (click)="setBucket('finished')">
+            Zuletzt beendet
+          </button>
+          <button type="button" class="btn zr-btn-toggle" [class.active]="bucket()==='abandoned'" (click)="setBucket('abandoned')">
+            Zuletzt abgebrochen
+          </button>
+          <button type="button" class="btn zr-btn-toggle" [class.active]="bucket()==='registered'" (click)="setBucket('registered')">
+            Zuletzt registriert
+          </button>
+        </div>
 
-      <div *ngIf="loading()" style="margin-top:12px;">Lade…</div>
-      <div *ngIf="error()" style="margin-top:12px;color:#b00020;">{{ error() }}</div>
+        <div *ngIf="loading()" class="mt-3">Lade…</div>
+        <div *ngIf="error()" class="mt-3 text-danger">{{ error() }}</div>
 
-      <ul style="margin-top:16px;padding-left:18px;">
-        <li *ngFor="let b of books()" style="margin:8px 0;">
-          <b>{{ b.author }}</b> — {{ b.title }}
-        </li>
-      </ul>
+        <ul *ngIf="books().length > 0" class="list-group mt-3">
+          <!--
+            Entire row is clickable ("stretched-link") so the user can click author, title,
+            or anywhere in the row to open the product.
+          -->
+          <li *ngFor="let b of books()" class="list-group-item position-relative" style="cursor: pointer;">
+            <div class="d-flex align-items-center justify-content-between gap-3">
+              <div class="min-w-0 pe-2">
+                <strong style="text-decoration: underline;">{{ b.author }}</strong>
+                <span> — </span>
+                <span style="text-decoration: underline;">{{ b.title }}</span>
+                <span *ngIf="b.purchaseVendor" class="badge rounded-pill text-bg-light border ms-2">
+                  {{ b.purchaseVendor }}
+                </span>
+              </div>
+              <span class="text-muted" style="font-size: 0.9rem;">↗</span>
+            </div>
 
-      <div *ngIf="!loading() && books().length===0" style="margin-top:16px;color:#666;">
-        Keine Treffer.
+            <a class="stretched-link" [href]="bookLink(b)" target="_blank" rel="noopener noreferrer" aria-label="Öffnen"></a>
+          </li>
+        </ul>
+
+        <div *ngIf="!loading() && books().length===0" class="mt-3 text-muted">
+          Keine Treffer.
+        </div>
       </div>
     </div>
   `,
-  styles: [`
-    button{padding:8px 12px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;}
-    button:hover{background:#f6f6f6;}
-  `]
+  styles: []
 })
 export class PublicBooksPageComponent {
   author = '';
@@ -64,6 +92,25 @@ export class PublicBooksPageComponent {
   error = signal<string | null>(null);
 
   constructor(private api: PublicBooksApiService) {}
+
+  /**
+   * Fallback search link used when we don't have a precomputed purchaseLink.
+   * Uses medimops search because it supports ISBNs + free-text and is fast.
+   */
+  private searchLink(q: string): string {
+    const query = (q ?? '').trim();
+    return 'https://www.medimops.de/produkte-C0/?fcIsSearch=1&searchparam=' + encodeURIComponent(query);
+  }
+
+  authorLink(author: string): string {
+    return this.searchLink(author);
+  }
+
+  bookLink(b: PublicBookRow): string {
+    const direct = (b.purchaseLink ?? '').trim();
+    if (direct) return direct;
+    return this.searchLink(`${b.author} ${b.title}`);
+  }
 
   async runSearch() {
     this.loading.set(true);

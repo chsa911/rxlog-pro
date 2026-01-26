@@ -1,0 +1,12 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE TABLE IF NOT EXISTS authors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS publishers (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS books (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), title TEXT NOT NULL, author_id UUID NOT NULL REFERENCES authors(id), publisher_id UUID NOT NULL REFERENCES publishers(id), year_first_published INT);
+CREATE TABLE IF NOT EXISTS book_barcodes (book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE, barcode TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_books_title_trgm ON books USING GIN (title gin_trgm_ops);
+CREATE TABLE IF NOT EXISTS size_rules (id SERIAL PRIMARY KEY, name TEXT NOT NULL, min_width INT NOT NULL, min_height INT NOT NULL);
+DO $$ BEGIN CREATE TYPE barcode_status AS ENUM ('AVAILABLE','RESERVED','ASSIGNED','RETIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE TABLE IF NOT EXISTS barcodes (code TEXT PRIMARY KEY, status barcode_status NOT NULL DEFAULT 'AVAILABLE', size_rule_id INT REFERENCES size_rules(id), updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS barcode_assignments (code TEXT REFERENCES barcodes(code) ON DELETE CASCADE, book_id UUID REFERENCES books(id) ON DELETE CASCADE, assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (code, book_id));
+CREATE TABLE IF NOT EXISTS reading_status (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), book_id UUID, status TEXT NOT NULL CHECK (status IN ('finished','abandoned','top')), pages INT, recorded_at TIMESTAMPTZ NOT NULL DEFAULT now());
